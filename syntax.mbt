@@ -24,6 +24,16 @@
 ///     x = x - 1;
 ///   }
 /// }
+///
+/// fn sum(arr: Array[Int]) -> Int {
+///   let total : Int = 0;
+///   let i : Int = 0;
+///   while i < arr.length {
+///     total = total + arr[i];
+///     i = i + 1;
+///   }
+///   return total;
+/// }
 
 
 pub(all) type Var String
@@ -71,10 +81,18 @@ pub(all) enum Atomic {
   Float(Float)
   Double(Double)
   Var(Var)
+  Array(Array[Expr]) // e.g. [1, 2, 3]
+}
+
+pub(all) enum ApplyExpr{
+  Atomic(Atomic)
+  ArrayGet(Var, Expr) // e.g. arr[i]
+  StructAccess(Var, Var) // e.g. struct.field
+  Call(Var, Array[Expr]) // e.g. func(arg1, arg2)
 }
 
 pub(all) enum Expr {
-  Atomic(Atomic)
+  Apply(ApplyExpr) // e.g. func(arg1, arg2)
   Add(Expr, Expr)
   Sub(Expr, Expr)
   Mul(Expr, Expr)
@@ -90,13 +108,8 @@ pub(all) enum Expr {
   Or(Expr, Expr)
   BitAnd(Expr, Expr) // e.g. 1 & 2
   BitOr(Expr, Expr) // e.g. 1 | 2
-  LShl(Expr, Expr) // e.g. 1 << 2
-  LShr(Expr, Expr) // e.g. 1 >> 2
-  AShr(Expr, Expr) // e.g. 1 >> 2
-  Array(Array[Expr]) // e.g. [1, 2, 3, 4]
-  ArrayAccess(Var, Expr) // e.g. arr[i]
-  StructAccess(Var, String) // e.g. struct.field
-  Call(Var, Array[Expr]) // e.g. func(arg1, arg2)
+  Shl(Expr, Expr) // e.g. 1 << 2
+  Shr(Expr, Expr) // e.g. 1 >> 2
 }
 
 pub(all) enum Stmt {
@@ -127,6 +140,7 @@ pub struct Program {
 
 pub fn parse_program(tokens: Array[Token]) -> Program {
   let functions = Array::new()
+  let structs = Array::new()
 
   loop tokens[:] {
     [Keyword(Fn), ..] as toks => {
@@ -134,6 +148,20 @@ pub fn parse_program(tokens: Array[Token]) -> Program {
       functions.push(f)
       continue rest_toks
     }
+    [Keyword(Struct), ..] as toks => {
+      let (s, rest_toks) = parse_struct(toks)
+       structs.push(s) // TODO: handle structs
+      continue rest_toks
+    }
+    _ => {
+      println("Parse Program Error: Unexpected token in program: \{tokens}")
+      panic()
+    }
+  }
+  Program::{
+    functions: functions,
+    structs: structs,
+    // global_vars: Array::new() // TODO: handle global variables
   }
 }
 
@@ -192,7 +220,7 @@ pub fn parse_function(tokens: ArrayView[Token]) -> (Function, ArrayView[Token]) 
   let body : Array[Stmt] = Array::new()
   loop tokens {
     [Bracket('}'), ..] => break
-    _ => {
+    _ as tokens => {
       let (stmt, rest_toks) = parse_statement(tokens)
       body.push(stmt)
       continue rest_toks
@@ -381,6 +409,10 @@ pub fn parse_return_statement(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Toke
       let stmt = Stmt::Return(Some(expr))
       (stmt, rest_toks)
     }
+    _ => {
+      println("Parse Return Statement Error: Unexpected token in return statement: \{tokens}")
+      panic()
+    }
   }
 }
 
@@ -388,14 +420,171 @@ pub fn parse_return_statement(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Toke
 // +, -: 7
 // *, /, %: 8
 pub fn parse_expression(tokens: ArrayView[Token]) -> (Expr, ArrayView[Token]) {
+
+  fn construct_bin_expr(left: Expr, right: Expr, oper: String) -> Expr {
+    match oper {
+      "+" => Expr::Add(left, right)
+      "-" => Expr::Sub(left, right)
+      "*" => Expr::Mul(left, right)
+      "/" => Expr::Div(left, right)
+      "%" => Expr::Rem(left, right)
+      "==" => Expr::Eq(left, right)
+      "!=" => Expr::Ne(left, right)
+      "<=" => Expr::Le(left, right)
+      ">=" => Expr::Ge(left, right)
+      "<" => Expr::Lt(left, right)
+      ">" => Expr::Gt(left, right)
+      "&&" => Expr::And(left, right)
+      "||" => Expr::Or(left, right)
+      "&" => Expr::BitAnd(left, right) // bitwise AND
+      "|" => Expr::BitOr(left, right) // bitwise OR
+      "<<" => Expr::Shl(left, right) // left shift
+      ">>" => Expr::Shr(left, right) // logical right shift
+      _ => {
+        println("Unknown operator: \{oper}")
+        panic()
+      }
+    }
+  }
+
+  fn preced(op: String) -> Int {
+    match op {
+      "+" | "-" => 7
+      "*" | "/" | "%" => 8
+      "==" | "!=" | "<=" | ">=" | "<" | ">" => 6
+      "&&" => 5
+      "||" => 4
+      "&" => 3 // bitwise AND
+      "|" => 2 // bitwise OR
+      "<<" => 1 // left shift
+      ">>" => 1 // logical right shift
+      _ => {
+        println("Unknown operator precedence for: \{op}")
+        panic()
+      }
+    }
+  }
+
+
+  let exprs : Array[Expr] = Array::new()
+  let opers : Array[String] = Array::new()
+
+  let (head_apply, rest_toks) = parse_apply_expr(tokens)
+  exprs.push(Expr::Apply(head_apply))
+  loop rest_toks {
+    [Operator(op), .. rest_toks] if opers.is_empty()  => {
+      let (next_apply, rest_toks) = parse_apply_expr(rest_toks)
+      exprs.push(Expr::Apply(next_apply))
+      opers.push(op)
+      continue rest_toks
+    }
+    [Operator(op), .. rest_toks] if preced(op) >= preced(opers.last().unwrap())  => {
+      let (next_apply, rest_toks) = parse_apply_expr(rest_toks)
+      exprs.push(Expr::Apply(next_apply))
+      opers.push(op)
+      continue rest_toks
+    }
+    [Operator(op), .. rest_toks] => {
+      while preced(op) < preced(opers.last().unwrap()) {
+        let right_expr = exprs.pop().unwrap()
+        let left_expr = exprs.pop().unwrap()
+        let oper = opers.pop().unwrap()
+        let new_expr = construct_bin_expr(left_expr, right_expr, oper)
+        exprs.push(new_expr)
+      }
+      let (next_apply, rest_toks) = parse_apply_expr(rest_toks)
+      exprs.push(Expr::Apply(next_apply))
+      opers.push(op)
+      continue rest_toks
+    }
+    _ as rest_toks => {
+      // clear opers and exprs
+      while not(opers.is_empty()) {
+        let right_expr = exprs.pop().unwrap()
+        let left_expr = exprs.pop().unwrap()
+        let oper = opers.pop().unwrap()
+        let new_expr = construct_bin_expr(left_expr, right_expr, oper)
+        exprs.push(new_expr)
+      }
+      guard exprs.length() == 1 else {
+        println("Parse Expression Error: Mismatched expression and operators")
+        panic()
+      }
+      (exprs[0], rest_toks)
+    }
+  }
 }
 
-fn operator_precedence(op: Token) -> Int {
-  match op {
-    Operator("+") | Operator("-") => 7
-    Operator("*") | Operator("/") | Operator("%") => 8
+pub fn parse_apply_expr(tokens: ArrayView[Token]) -> (ApplyExpr, ArrayView[Token]) {
+  match tokens {
+    [Lower(var_name), Bracket('['), .. rest_toks] => {
+      let (index_expr, rest_toks) = parse_expression(rest_toks)
+      guard rest_toks is [Bracket(']'), .. rest_toks] else {
+        println("Parse ApplyExpr Error: Expected ']' after array index")
+        panic()
+      }
+      (ApplyExpr::ArrayGet(var_name, index_expr), rest_toks)
+    }
+    [Lower(var_name), Symbol('.'), Lower(field_name), .. rest_toks] => {
+      (ApplyExpr::StructAccess(var_name, field_name), rest_toks)
+    }
+    [Lower(func_name), Bracket('('), .. rest_toks] => {
+      let args: Array[Expr] = Array::new()
+      let rest_toks = loop rest_toks {
+        [Bracket(')'), .. rest_toks] => break rest_toks
+        _ as rest_toks => {
+          let (arg_expr, rest_toks) = parse_expression(rest_toks)
+          args.push(arg_expr)
+          if rest_toks is [Symbol(','), .. rest_toks] {
+            continue rest_toks
+          } else if rest_toks is [Bracket(')'), .. rest_toks] {
+            break rest_toks
+          } else {
+            println("Parse ApplyExpr Error: Unexpected token in function call arguments: \{rest_toks}")
+            panic()
+          }
+        }
+      }
+      (ApplyExpr::Call(func_name, args), rest_toks)
+    }
     _ => {
-      println("Unknown operator precedence for: \{op}")
+      println("Parse ApplyExpr Error: Unexpected token in apply expression: \{tokens}")
+      panic()
+    }
+  }
+}
+
+pub fn parse_atomic(tokens: ArrayView[Token]) -> (Atomic, ArrayView[Token]) {
+  match tokens {
+    [Bool(value), .. rest_toks] => (Bool(value), rest_toks)
+    [Int(value), .. rest_toks] =>  (Int(value), rest_toks)
+    [Int64(value), .. rest_toks] =>(Int64(value), rest_toks)
+    [UInt(value), .. rest_toks] => (UInt(value), rest_toks)
+    [UInt64(value), .. rest_toks] => (UInt64(value), rest_toks)
+    [Float(value), .. rest_toks] =>  (Float(value), rest_toks)
+    [Double(value), .. rest_toks] => (Double(value), rest_toks)
+    [Lower(var_name), .. rest_toks] => (Var(var_name), rest_toks)
+    [Bracket('['), .. rest_toks] => {
+      let elements: Array[Expr] = Array::new()
+      let rest_toks = loop rest_toks {
+        [Bracket(']'), .. rest_toks] => break rest_toks
+        _ as rest_toks => {
+          let (expr, rest_toks) = parse_expression(rest_toks)
+          elements.push(expr)
+          if rest_toks is [Symbol(','), .. rest_toks] {
+            continue rest_toks
+          } else if rest_toks is [Bracket(']'), .. rest_toks] {
+            break rest_toks
+          } else {
+            println("Parse Atomic Error: Unexpected token in array literal: \{rest_toks}")
+            panic()
+          }
+        }
+      }
+      (Array(elements), rest_toks)
+    }
+    _ => {
+      println("Parse Atomic Error: Unexpected token in atomic expression: \{tokens}")
       panic()
     }
   }

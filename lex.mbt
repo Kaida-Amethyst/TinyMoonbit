@@ -162,7 +162,7 @@ pub fn lex(code : String) -> Array[Token] {
       continue rest
     }
     [.. ">=", .. rest] => {
-      tokens.push(Token::Operator("<=".to_string()))
+      tokens.push(Token::Operator(">=".to_string()))
       continue rest
     }
     [.. "&&", .. rest] => {
