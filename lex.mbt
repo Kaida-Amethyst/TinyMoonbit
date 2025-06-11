@@ -141,6 +141,14 @@ pub fn lex(code : String) -> Array[Token] {
       tokens.push(Token::Operator("%"))
       continue rest
     }
+    [.. ">>", .. rest] => {
+      tokens.push(Token::Operator(">>".to_string()))
+      continue rest
+    }
+    [.. "<<", .. rest] => {
+      tokens.push(Token::Operator("<<".to_string()))
+      continue rest
+    }
     [.. "==", .. rest] => {
       tokens.push(Token::Operator("==".to_string()))
       continue rest
@@ -161,8 +169,16 @@ pub fn lex(code : String) -> Array[Token] {
       tokens.push(Token::Operator("&&".to_string()))
       continue rest
     }
+    [.. "&", .. rest] => {
+      tokens.push(Token::Operator("&".to_string()))
+      continue rest
+    }
     [.. "||", .. rest] => {
       tokens.push(Token::Operator("||".to_string()))
+      continue rest
+    }
+    [.. "|", .. rest] => {
+      tokens.push(Token::Operator("|".to_string()))
       continue rest
     }
     ['<', .. rest] => {

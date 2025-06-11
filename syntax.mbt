@@ -88,6 +88,11 @@ pub(all) enum Expr {
   Gt(Expr, Expr)
   And(Expr, Expr)
   Or(Expr, Expr)
+  BitAnd(Expr, Expr) // e.g. 1 & 2
+  BitOr(Expr, Expr) // e.g. 1 | 2
+  LShl(Expr, Expr) // e.g. 1 << 2
+  LShr(Expr, Expr) // e.g. 1 >> 2
+  AShr(Expr, Expr) // e.g. 1 >> 2
   Array(Array[Expr]) // e.g. [1, 2, 3, 4]
   ArrayAccess(Var, Expr) // e.g. arr[i]
   StructAccess(Var, String) // e.g. struct.field
@@ -382,9 +387,6 @@ pub fn parse_return_statement(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Toke
 // precdence:
 // +, -: 7
 // *, /, %: 8
-// <, <=, >, >=: 9
-// ==, !=: 10
-// ||, &&: 11
 pub fn parse_expression(tokens: ArrayView[Token]) -> (Expr, ArrayView[Token]) {
 }
 
@@ -392,10 +394,6 @@ fn operator_precedence(op: Token) -> Int {
   match op {
     Operator("+") | Operator("-") => 7
     Operator("*") | Operator("/") | Operator("%") => 8
-    Operator("<") | Operator("<=") | Operator(">") | Operator(">=") => 9
-    Operator("==") | Operator("!=") => 10
-    Operator("||") => 11
-    Operator("&&") => 12
     _ => {
       println("Unknown operator precedence for: \{op}")
       panic()
