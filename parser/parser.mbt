@@ -1,40 +1,5 @@
-///| TinyMoonbit
-/// 
-/// example:
-///
-/// fn add (x: Int, y: Int) -> Int {
-///   return x + y;
-/// }
-///
-/// fn modify(x: Ref[Int]) -> Int {
-///   x.val = 10;
-/// }
-///
-/// fn fibonacci(n: Int) -> Int {
-///   if n <= 1 {
-///     return n;
-///   } else {
-///     return fibonacci(n - 1) + fibonacci(n - 2);
-///   }
-/// }
-///
-/// fn counter(x: Int) -> Unit {
-///   while x > 0 {
-///     println(x);
-///     x = x - 1;
-///   }
-/// }
-///
-/// fn sum(arr: Array[Int]) -> Int {
-///   let total : Int = 0;
-///   let i : Int = 0;
-///   while i < arr.length {
-///     total = total + arr[i];
-///     i = i + 1;
-///   }
-///   return total;
-/// }
-pub(all) type Var String derive(Show, Eq)
+typealias @lexer.Token
+fnalias @lexer.lex
 
 ///|
 pub(all) enum TypeName {
@@ -46,9 +11,8 @@ pub(all) enum TypeName {
   UInt64
   Float
   Double
-  Ref(TypeName) // e.g. Ref[Int]
   Array(TypeName) // e.g. Array[Int]
-  Struct(String) // e.g. Struct[MyStruct]
+  Struct(String) // e.g. Struct Point
 } derive(Show, Eq)
 
 ///|
@@ -62,7 +26,6 @@ pub fn TypeName::from(master : String, sub_type~ : String? = None) -> TypeName {
     ("UInt64", None) => TypeName::UInt64
     ("Float", None) => TypeName::Float
     ("Double", None) => TypeName::Double
-    ("Ref", Some(sub)) => TypeName::Ref(TypeName::from(sub))
     ("Array", Some(sub)) => TypeName::Array(TypeName::from(sub))
     (struct_name, None) => TypeName::Struct(struct_name)
     _ => {
@@ -81,16 +44,18 @@ pub(all) enum Atomic {
   UInt64(UInt64)
   Float(Float)
   Double(Double)
-  Var(Var)
+  Var(String)
   Array(Array[Expr]) // e.g. [1, 2, 3]
+  Paren(Expr) // e.g. (1 + 2)
 } derive(Show, Eq)
 
 ///|
 pub(all) enum ApplyExpr {
   Atomic(Atomic)
-  ArrayGet(Var, Expr) // e.g. arr[i]
-  StructAccess(Var, Var) // e.g. struct.field
-  Call(Var, Array[Expr]) // e.g. func(arg1, arg2)
+  ArrayGet(String, Expr) // e.g. arr[i]
+  StructAccess(String, String) // e.g. struct.field
+  Call(String, Array[Expr]) // e.g. func(arg1, arg2)
+  Construct(String, Array[(String, Expr)]) // e.g. Point::{x: 1, y: 2}
 } derive(Show, Eq)
 
 ///|
@@ -109,16 +74,15 @@ pub(all) enum Expr {
   Gt(Expr, Expr)
   And(Expr, Expr)
   Or(Expr, Expr)
-  BitAnd(Expr, Expr) // e.g. 1 & 2
-  BitOr(Expr, Expr) // e.g. 1 | 2
   Shl(Expr, Expr) // e.g. 1 << 2
   Shr(Expr, Expr) // e.g. 1 >> 2
 } derive(Show, Eq)
 
 ///|
 pub(all) enum Stmt {
-  Let(Var, TypeName, Expr) // e.g. let x: Int = 10;
-  Assign(Var, Var?, Expr) // e.g. x = 10; x.val = 20;
+  Let(String, TypeName, Expr) // e.g. let x: Int = 10;
+  Assign(String, String?, Expr) // e.g. x = 10; x.val = 20;
+  ArrayPut(String, Expr, Expr) // e.g. arr[i] = 10;
   If(Expr, Array[Stmt], Array[Stmt]) // condition, then, else
   While(Expr, Array[Stmt]) // condition, body
   Return(Expr?) // optional return value
@@ -126,16 +90,16 @@ pub(all) enum Stmt {
 
 ///|
 pub(all) struct Function {
-  name : Var
-  params : Array[(Var, TypeName)]
+  name : String
+  params : Array[(String, TypeName)]
   return_type : TypeName
   body : Array[Stmt]
 } derive(Show, Eq)
 
 ///|
 pub(all) struct StructDef {
-  name : Var
-  fields : Array[(Var, TypeName)]
+  name : String
+  fields : Array[(String, TypeName)]
 } derive(Show, Eq)
 
 ///|
@@ -176,12 +140,12 @@ pub fn parse_function(
     println("Parse Function Error, Not a function definition")
     panic()
   }
-  let params : Array[(Var, TypeName)] = Array::new()
+  let params : Array[(String, TypeName)] = Array::new()
   let tokens = loop tokens {
     [
       Lower(param_name),
-      Symbol(':'),
-      Keyword(Array),
+      Symbol(":"),
+      Upper("Array"),
       Bracket('['),
       Upper(sub_type),
       Bracket(']'),
@@ -191,25 +155,12 @@ pub fn parse_function(
       params.push((param_name, type_name))
       continue rest_toks
     }
-    [
-      Lower(param_name),
-      Symbol(':'),
-      Keyword(Ref),
-      Bracket('['),
-      Upper(sub_type),
-      Bracket(']'),
-      .. rest_toks,
-    ] => {
-      let type_name = TypeName::from("Ref", sub_type=Some(sub_type))
-      params.push((param_name, type_name))
-      continue rest_toks
-    }
-    [Lower(param_name), Symbol(':'), Upper(type_name), .. rest_toks] => {
+    [Lower(param_name), Symbol(":"), Upper(type_name), .. rest_toks] => {
       let type_name = TypeName::from(type_name)
       params.push((param_name, type_name))
       continue rest_toks
     }
-    [Symbol(','), .. rest_toks] => continue rest_toks
+    [Symbol(","), .. rest_toks] => continue rest_toks
     [Bracket(')'), LeftArrow, .. rest_toks] => break rest_toks
     _ as tokens => {
       println("Parse Function Error: Unexpected token in parameters: \{tokens}")
@@ -220,7 +171,7 @@ pub fn parse_function(
   // parse return type
   let (return_type, tokens) = match tokens {
     [
-      Keyword(Array),
+      Upper("Array"),
       Bracket('['),
       Upper(sub_type),
       Bracket(']'),
@@ -228,17 +179,6 @@ pub fn parse_function(
       .. rest_toks,
     ] => {
       let return_type = TypeName::from("Array", sub_type=Some(sub_type))
-      (return_type, rest_toks)
-    }
-    [
-      Keyword(Ref),
-      Bracket('['),
-      Upper(sub_type),
-      Bracket(']'),
-      Bracket('{'),
-      .. rest_toks,
-    ] => {
-      let return_type = TypeName::from("Ref", sub_type=Some(sub_type))
       (return_type, rest_toks)
     }
     [Upper(return_type), Bracket('{'), .. rest_toks] => {
@@ -269,16 +209,16 @@ pub fn parse_struct(tokens : ArrayView[Token]) -> (StructDef, ArrayView[Token]) 
     println("Parse Struct Error, Not a struct definition")
     panic()
   }
-  let fields : Array[(Var, TypeName)] = Array::new()
+  let fields : Array[(String, TypeName)] = Array::new()
   let tokens = loop tokens {
     [
       Lower(field_name),
-      Symbol(':'),
-      Keyword(Array),
+      Symbol(":"),
+      Upper("Array"),
       Bracket('['),
       Upper(sub_type),
       Bracket(']'),
-      Symbol(','),
+      Symbol(","),
       .. rest_toks,
     ] => {
       let type_name = TypeName::from("Array", sub_type=Some(sub_type))
@@ -287,23 +227,9 @@ pub fn parse_struct(tokens : ArrayView[Token]) -> (StructDef, ArrayView[Token]) 
     }
     [
       Lower(field_name),
-      Symbol(':'),
-      Keyword(Ref),
-      Bracket('['),
-      Upper(sub_type),
-      Bracket(']'),
-      Symbol(','),
-      .. rest_toks,
-    ] => {
-      let type_name = TypeName::from("Ref", sub_type=Some(sub_type))
-      fields.push((field_name, type_name))
-      continue rest_toks
-    }
-    [
-      Lower(field_name),
-      Symbol(':'),
+      Symbol(":"),
       Upper(type_name),
-      Symbol(','),
+      Symbol(","),
       .. rest_toks,
     ] => {
       let type_name = TypeName::from(type_name)
@@ -329,9 +255,9 @@ pub fn parse_statement(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
     [Keyword(If), ..] => parse_if_statement(tokens)
     [Keyword(While), ..] => parse_while_statement(tokens)
     [Keyword(Return), ..] => parse_return_statement(tokens)
-    [Lower(_), Symbol('.'), Lower(_), Symbol('='), ..] =>
+    [Lower(_), Symbol("."), Lower(_), Operator("="), ..] =>
       parse_assign_statement(tokens)
-    [Lower(_), Symbol('='), ..] => parse_assign_statement(tokens)
+    [Lower(_), Operator("="), ..] => parse_assign_statement(tokens)
     _ => {
       println("Parse Statement Error: Unexpected token in statement: \{tokens}")
       panic()
@@ -347,12 +273,12 @@ pub fn parse_let_statement(
     [
       Keyword(Let),
       Lower(var_name),
-      Symbol(':'),
-      Keyword(Array),
+      Symbol(":"),
+      Upper("Array"),
       Bracket('['),
       Upper(sub_type),
       Bracket(']'),
-      Symbol('='),
+      Operator("="),
       .. rest_toks,
     ] => {
       let type_name = TypeName::from("Array", sub_type=Some(sub_type))
@@ -367,9 +293,9 @@ pub fn parse_let_statement(
     [
       Keyword(Let),
       Lower(var_name),
-      Symbol(':'),
+      Symbol(":"),
       Upper(type_name),
-      Symbol('='),
+      Operator("="),
       .. rest_toks,
     ] => {
       let type_name = TypeName::from(type_name)
@@ -395,7 +321,7 @@ pub fn parse_assign_statement(
   tokens : ArrayView[Token]
 ) -> (Stmt, ArrayView[Token]) {
   match tokens {
-    [Lower(var_name), Symbol('='), .. rest_toks] => {
+    [Lower(var_name), Operator("="), .. rest_toks] => {
       let (expr, rest_toks) = parse_expression(rest_toks)
       guard rest_toks is [Terminator, .. rest_toks] else {
         println("Parse Assign Statement Error: Expected ';' after assignment")
@@ -404,7 +330,7 @@ pub fn parse_assign_statement(
       let stmt = Stmt::Assign(var_name, None, expr)
       (stmt, rest_toks)
     }
-    [Lower(var_name), Symbol('.'), Lower(field_name), Symbol('='), .. rest_toks] => {
+    [Lower(var_name), Symbol("."), Lower(field_name), Operator("="), .. rest_toks] => {
       let (expr, rest_toks) = parse_expression(rest_toks)
       guard rest_toks is [Terminator, .. rest_toks] else {
         println(
@@ -413,6 +339,20 @@ pub fn parse_assign_statement(
         panic()
       }
       let stmt = Stmt::Assign(var_name, Some(field_name), expr)
+      (stmt, rest_toks)
+    }
+    [Lower(var_name), Bracket('['), .. rest_toks] => {
+      let (index_expr, rest_toks) = parse_expression(rest_toks)
+      guard rest_toks is [Bracket(']'), Operator("="), .. rest_toks] else {
+        println("Parse Assign Statement Error: Expected ']' and '=' after array index")
+        panic()
+      }
+      let (expr, rest_toks) = parse_expression(rest_toks)
+      guard rest_toks is [Terminator, .. rest_toks] else {
+        println("Parse Assign Statement Error: Expected ';' after array assignment")
+        panic()
+      }
+      let stmt = Stmt::ArrayPut(var_name, index_expr, expr)
       (stmt, rest_toks)
     }
     _ => {
@@ -551,8 +491,6 @@ pub fn parse_expression(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) {
       ">" => Expr::Gt(left, right)
       "&&" => Expr::And(left, right)
       "||" => Expr::Or(left, right)
-      "&" => Expr::BitAnd(left, right) // bitwise AND
-      "|" => Expr::BitOr(left, right) // bitwise OR
       "<<" => Expr::Shl(left, right) // left shift
       ">>" => Expr::Shr(left, right) // logical right shift
       _ => {
@@ -568,8 +506,6 @@ pub fn parse_expression(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) {
       "+" | "-" => 8
       "<<" | ">>" => 7 // left and logical right shift
       "==" | "!=" | "<=" | ">=" | "<" | ">" => 6
-      "&" => 5 // bitwise AND
-      "|" => 4 // bitwise OR
       "&&" => 3
       "||" => 2
       _ => {
@@ -597,13 +533,26 @@ pub fn parse_expression(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) {
       continue rest_toks
     }
     [Operator(op), .. rest_toks] => {
-      while preced(op) < preced(opers.last().unwrap()) {
-        let right_expr = exprs.pop().unwrap()
-        let left_expr = exprs.pop().unwrap()
-        let oper = opers.pop().unwrap()
-        let new_expr = construct_bin_expr(left_expr, right_expr, oper)
-        exprs.push(new_expr)
+      let new_exprs = Array::new()
+      let new_opers = Array::new()
+      while opers.last() is Some(last_op) && preced(op) < preced(last_op) {
+        new_exprs.push(exprs.pop().unwrap()) // right_expr
+        new_opers.push(opers.pop().unwrap())
+      } else {
+        new_exprs.push(exprs.pop().unwrap()) // left_expr
       }
+      while not(new_opers.is_empty()) {
+        let left_expr = new_exprs.pop().unwrap()
+        let right_expr = new_exprs.pop().unwrap()
+        let oper = new_opers.pop().unwrap()
+        let new_expr = construct_bin_expr(left_expr, right_expr, oper)
+        new_exprs.push(new_expr)
+      }
+      guard new_exprs.length() == 1 else {
+        println("Parse Expression Error: Mismatched expression and operators")
+        panic()
+      }
+      exprs.push(new_exprs.pop().unwrap())
       let (next_apply, rest_toks) = parse_apply_expr(rest_toks)
       exprs.push(Expr::Apply(next_apply))
       opers.push(op)
@@ -640,7 +589,7 @@ pub fn parse_apply_expr(
       }
       (ApplyExpr::ArrayGet(var_name, index_expr), rest_toks)
     }
-    [Lower(var_name), Symbol('.'), Lower(field_name), .. rest_toks] =>
+    [Lower(var_name), Symbol("."), Lower(field_name), .. rest_toks] =>
       (ApplyExpr::StructAccess(var_name, field_name), rest_toks)
     [Lower(func_name), Bracket('('), .. rest_toks] => {
       let args : Array[Expr] = Array::new()
@@ -649,7 +598,7 @@ pub fn parse_apply_expr(
         _ as rest_toks => {
           let (arg_expr, rest_toks) = parse_expression(rest_toks)
           args.push(arg_expr)
-          if rest_toks is [Symbol(','), .. rest_toks] {
+          if rest_toks is [Symbol(","), .. rest_toks] {
             continue rest_toks
           } else if rest_toks is [Bracket(')'), .. rest_toks] {
             break rest_toks
@@ -662,6 +611,23 @@ pub fn parse_apply_expr(
         }
       }
       (ApplyExpr::Call(func_name, args), rest_toks)
+    }
+    [Upper(struct_name), Symbol("::"), Bracket('{'), .. rest_toks] => {
+      let fields : Array[(String, Expr)] = Array::new()
+      let rest_toks = loop rest_toks {
+        [Bracket('}'), .. rest_toks] => break rest_toks
+        [Lower(field_name), Symbol(":"), .. rest_toks] => {
+          let (field_expr, rest_toks) = parse_expression(rest_toks)
+          fields.push((field_name, field_expr))
+          continue rest_toks
+        }
+        [Symbol(","), .. rest_toks] => continue rest_toks
+        _ as rest_toks => {
+          println("Parse ApplyExpr Error: Unexpected token in struct constructor: \{rest_toks}")
+          panic()
+        }
+      }
+      (ApplyExpr::Construct(struct_name, fields), rest_toks)
     }
     _ => {
       let (atomic, rest_toks) = parse_atomic(tokens)
@@ -688,7 +654,7 @@ pub fn parse_atomic(tokens : ArrayView[Token]) -> (Atomic, ArrayView[Token]) {
         _ as rest_toks => {
           let (expr, rest_toks) = parse_expression(rest_toks)
           elements.push(expr)
-          if rest_toks is [Symbol(','), .. rest_toks] {
+          if rest_toks is [Symbol(","), .. rest_toks] {
             continue rest_toks
           } else if rest_toks is [Bracket(']'), .. rest_toks] {
             break rest_toks
@@ -702,6 +668,14 @@ pub fn parse_atomic(tokens : ArrayView[Token]) -> (Atomic, ArrayView[Token]) {
       }
       (Array(elements), rest_toks)
     }
+    [Bracket('('), .. rest_toks] => {
+      let (expr, rest_toks) = parse_expression(rest_toks)
+      guard rest_toks is [Bracket(')'), .. rest_toks] else {
+        println("Parse Atomic Error: Expected ')' after parenthesis")
+        panic()
+      }
+      (Paren(expr), rest_toks)
+    }
     _ => {
       println(
         "Parse Atomic Error: Unexpected token in atomic expression: \{tokens}",
@@ -709,4 +683,67 @@ pub fn parse_atomic(tokens : ArrayView[Token]) -> (Atomic, ArrayView[Token]) {
       panic()
     }
   }
+}
+
+test "Parser" {
+  let code = "1 + 3"
+  inspect(
+    parse_expression(lex(code)).0,
+    content="Add(Apply(Atomic(Int(1))), Apply(Atomic(Int(3))))"
+  )
+
+  let code = "1 + 3 * 5"
+  inspect(
+    parse_expression(lex(code)).0,
+    content="Add(Apply(Atomic(Int(1))), Mul(Apply(Atomic(Int(3))), Apply(Atomic(Int(5)))))"
+  )
+
+  let code = "1 + 2 - 3"
+  inspect(
+    parse_expression(lex(code)).0,
+    content="Add(Apply(Atomic(Int(1))), Sub(Apply(Atomic(Int(2))), Apply(Atomic(Int(3)))))"
+  )
+
+  let code = "1 * 2 * 3 + 4"
+  inspect(
+    parse_expression(lex(code)).0,
+    content="Add(Mul(Mul(Apply(Atomic(Int(1))), Apply(Atomic(Int(2)))), Apply(Atomic(Int(3)))), Apply(Atomic(Int(4))))"
+  )
+
+  let code = "let x : Int = 10;"
+  inspect(
+    parse_let_statement(lex(code)).0,
+    content="Let(\"x\", Int, Apply(Atomic(Int(10))))"
+  )
+  
+  let code = "let x : Array[Int] = [];"
+  inspect(
+    parse_let_statement(lex(code)).0,
+    content = "Let(\"x\", Array(Int), Apply(Atomic(Array([]))))"
+  )
+
+  let code = "let x : Point = Point::{x : 1, x : 2};"
+  inspect(
+    parse_let_statement(lex(code)).0,
+    content = "Let(\"x\", Struct(\"Point\"), Apply(Construct(\"Point\", [(\"x\", Apply(Atomic(Int(1)))), (\"x\", Apply(Atomic(Int(2))))])))"
+  )
+
+  let code = "if x > 0 { return x; } else { return 0 - x; }"
+  inspect(
+    parse_if_statement(lex(code)).0,
+    content = "If(Gt(Apply(Atomic(Var(\"x\"))), Apply(Atomic(Int(0)))), [Return(Some(Apply(Atomic(Var(\"x\")))))], " +
+               "[Return(Some(Sub(Apply(Atomic(Int(0))), Apply(Atomic(Var(\"x\"))))))])"
+  )
+  let code = "if a < b { return true; } else { return false; }"
+  inspect(
+    parse_if_statement(lex(code)).0,
+    content = "If(Lt(Apply(Atomic(Var(\"a\"))), Apply(Atomic(Var(\"b\")))), [Return(Some(Apply(Atomic(Bool(true)))))], " +
+               "[Return(Some(Apply(Atomic(Bool(false)))))])"
+  )
+  let code = "if a >= 2 { x.val = 1; } else if a <= 1 { x.val = 2; } else { x.val = 3; }"
+  inspect(
+    parse_if_statement(lex(code)).0,
+    content = "If(Ge(Apply(Atomic(Var(\"a\"))), Apply(Atomic(Int(2)))), [Assign(\"x\", Some(\"val\"), Apply(Atomic(Int(1))))], [])"
+
+  )
 }

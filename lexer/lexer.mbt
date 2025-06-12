@@ -1,29 +1,4 @@
-///| TinyMoonbit
-/// 
-/// example:
-///
-/// fn add (x: Int, y: Int) -> Int {
-///   return x + y;
-/// }
-///
-/// fn modify(x: Ref[Int]) -> Int {
-///   x.val = 10;
-/// }
-///
-/// fn fibonacci(n: Int) -> Int {
-///   if n <= 1 {
-///     return n;
-///   else {
-///     return fibonacci(n - 1) + fibonacci(n - 2);
-///   }
-/// }
-///
-/// fn counter(x: Int) -> Unit {
-///   while x > 0 {
-///     println(x);
-///     x = x - 1;
-///   }
-/// }
+///|
 pub(all) enum Keyword {
   Let
   If
@@ -32,8 +7,6 @@ pub(all) enum Keyword {
   Return
   Fn
   Struct
-  Array
-  Ref
 } derive(Show, Eq)
 
 ///|
@@ -50,7 +23,7 @@ pub(all) enum Token {
   Lower(String)
   Operator(String) // +, -, *, /, %, =, ==, !=, <, >, <=, >=, &&, ||
   Bracket(Char) // (, ), [, ], {, }
-  Symbol(Char) // , : , . , @
+  Symbol(String) // , : , . , @
   Terminator // ;
   LeftArrow // ->
   EOF
@@ -68,8 +41,12 @@ pub fn lex(code : String) -> Array[Token] {
       tokens.push(Token::Terminator)
       continue rest
     }
+    [.."::", .. rest] => {
+      tokens.push(Token::Symbol("::"))
+      continue rest
+    }
     [':' | '.' | ',' as c, .. rest] => {
-      tokens.push(Token::Symbol(c))
+      tokens.push(Token::Symbol(c.to_string()))
       continue rest
     }
     [' ' | '\n' | '\r' | '\t', .. rest] => continue rest
@@ -99,14 +76,6 @@ pub fn lex(code : String) -> Array[Token] {
     }
     [.. "struct", .. rest] => {
       tokens.push(Token::Keyword(Keyword::Struct))
-      continue rest
-    }
-    [.. "Array", .. rest] => {
-      tokens.push(Token::Keyword(Keyword::Array))
-      continue rest
-    }
-    [.. "Ref", .. rest] => {
-      tokens.push(Token::Keyword(Keyword::Ref))
       continue rest
     }
     [.. "true", .. rest] => {
@@ -346,11 +315,11 @@ test "lex" {
   inspect(
     toks,
     content="[Keyword(Fn), Lower(\"add\"), Bracket('('), " +
-      "Lower(\"x\"), Symbol(':'), Upper(\"Int\"), " +
-      "Symbol(','), Lower(\"y\"), Symbol(':'), " +
+      "Lower(\"x\"), Symbol(\":\"), Upper(\"Int\"), " +
+      "Symbol(\",\"), Lower(\"y\"), Symbol(\":\"), " +
       "Upper(\"Int\"), Bracket(')'), LeftArrow, " +
       "Upper(\"Int\"), Bracket('{'), Keyword(Return), " +
       "Lower(\"x\"), Operator(\"+\"), Lower(\"y\"), " +
-      "Operator(\"-\"), UInt64(342), Bracket('}')]",
+      "Operator(\"-\"), UInt64(342), Bracket('}'), EOF]",
   )
 }

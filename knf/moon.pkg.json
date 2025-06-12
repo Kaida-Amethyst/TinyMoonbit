@@ -1,7 +1,5 @@
 {
-  "is-main": true,
   "import": [
-    "Kaida-Amethyst/TinyMoonbit/lexer",
     "Kaida-Amethyst/TinyMoonbit/parser"
   ]
 }
