@@ -18,16 +18,16 @@ pub(all) enum TypeName {
 ///|
 pub fn TypeName::from(master : String, sub_type~ : String? = None) -> TypeName {
   match (master, sub_type) {
-    ("Unit", None) => TypeName::Unit
-    ("Bool", None) => TypeName::Bool
-    ("Int", None) => TypeName::Int
-    ("Int64", None) => TypeName::Int64
-    ("UInt", None) => TypeName::UInt
-    ("UInt64", None) => TypeName::UInt64
-    ("Float", None) => TypeName::Float
-    ("Double", None) => TypeName::Double
-    ("Array", Some(sub)) => TypeName::Array(TypeName::from(sub))
-    (struct_name, None) => TypeName::Struct(struct_name)
+    ("Unit", None) => Unit
+    ("Bool", None) => Bool
+    ("Int", None) =>  Int
+    ("Int64", None) =>Int64
+    ("UInt", None) => UInt
+    ("UInt64", None) => UInt64
+    ("Float", None) =>  Float
+    ("Double", None) => Double
+    ("Array", Some(sub)) => Array(TypeName::from(sub))
+    (struct_name, None) =>  Struct(struct_name)
     _ => {
       println("Unknown type name: \{master} with sub-type: \{sub_type}")
       panic()

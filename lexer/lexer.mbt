@@ -7,6 +7,9 @@ pub(all) enum Keyword {
   Return
   Fn
   Struct
+  As
+  Ref
+  SizeOf
 } derive(Show, Eq)
 
 ///|
@@ -76,6 +79,18 @@ pub fn lex(code : String) -> Array[Token] {
     }
     [.. "struct", .. rest] => {
       tokens.push(Token::Keyword(Keyword::Struct))
+      continue rest
+    }
+    [.. "as", .. rest] => {
+      tokens.push(Token::Keyword(Keyword::As))
+      continue rest
+    }
+    [.. "ref", .. rest] => {
+      tokens.push(Token::Keyword(Keyword::Ref))
+      continue rest
+    }
+    [.. "sizeof", .. rest] => {
+      tokens.push(Token::Keyword(Keyword::SizeOf))
       continue rest
     }
     [.. "true", .. rest] => {
