@@ -1,7 +1,7 @@
 typealias @lexer.Token
 fnalias @lexer.lex
 
-pub(all) enum Type {
+pub enum Type {
   Unit
   Bool
   Int
@@ -48,8 +48,8 @@ pub(all) enum AtomExpr {
   Ref(String) // e.g. ref x
   TypeSizeof(Type) // e.g. sizeof(Int)
   ExprSizeof(Expr) // e.g. sizeof(1 + 2)
-  Array(Array[Expr]) // e.g. [1, 2, 3]
-  Paren(Expr) // e.g. (1 + 2)
+  Array(Array[Expr], mut ty~: Type?) // e.g. [1, 2, 3]
+  Paren(Expr, mut ty~: Type?) // e.g. (1 + 2)
 } derive(Show, Eq)
 
 pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) {
@@ -91,7 +91,7 @@ pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token])
           }
         }
       }
-      (Array(elements), rest_toks)
+      (Array(elements, ty=None), rest_toks)
     }
     [Bracket('('), .. rest_toks] => {
       let (expr, rest_toks) = Expr::parse(rest_toks)
@@ -99,7 +99,7 @@ pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token])
         println("Parse AtomExpr Error: Expected ')' after parenthesis")
         panic()
       }
-      (Paren(expr), rest_toks)
+      (Paren(expr, ty=None), rest_toks)
     }
     _ => {
       println("Parse AtomExpr Error: Unexpected token in atomic expression: \{tokens}")
@@ -719,6 +719,29 @@ pub fn Function::parse(
   (function, tokens)
 }
 
+pub struct MainFunc {
+  body: Array[Stmt]
+}
+
+pub fn MainFunc::parse(tokens: ArrayView[Token]) -> (MainFunc, ArrayView[Token]) {
+  guard tokens is [Keyword(Fn), Lower("main"), Bracket('{'), .. tokens] else {
+    println("Parse Main Function Error, Not a main function definition")
+    panic()
+  }
+
+  let body : Array[Stmt] = Array::new()
+  let tokens = loop tokens {
+    [Bracket('}'), .. rest_toks] => break rest_toks
+    _ as tokens => {
+      let (stmt, rest_toks) = Stmt::parse(tokens)
+      body.push(stmt)
+      continue rest_toks
+    }
+  }
+  let main_func = MainFunc::{ body }
+  (main_func, tokens)
+}
+
 test "Function::parse" {
   let (f, _) = Function::parse(lex("fn add(x: Int, y: Int) -> Int { return x + y; }"))
   inspect(
@@ -787,13 +810,20 @@ test "StructDef::parse" {
 pub struct Program {
   functions: Array[Function]
   structs: Array[StructDef]
+  main_func: MainFunc?
 }
 
 pub fn Program::parse(tokens: Array[Token]) -> Program {
   let functions = Array::new()
   let structs = Array::new()
+  let mut main_func = None
   loop tokens[:] {
     [EOF] => break
+    [Keyword(Fn), Lower("main"), ..] as toks => {
+      let (f, rest_toks) = MainFunc::parse(toks)
+      main_func = Some(f)
+      continue rest_toks
+    }
     [Keyword(Fn), ..] as toks => {
       let (f, rest_toks) = Function::parse(toks)
       functions.push(f)
@@ -809,5 +839,5 @@ pub fn Program::parse(tokens: Array[Token]) -> Program {
       panic()
     }
   }
-  Program::{ functions, structs }
+  Program::{ functions, structs, main_func }
 }
