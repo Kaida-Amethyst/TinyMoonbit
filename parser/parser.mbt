@@ -44,12 +44,13 @@ pub(all) enum AtomExpr {
   UInt64(UInt64)
   Float(Float)
   Double(Double)
-  Var(String)
-  Ref(String) // e.g. ref x
+  Var(String, mut ty~: Type?) // e.g. x
+  Ref(String, mut ty~: Type?) // e.g. ref x
   TypeSizeof(Type) // e.g. sizeof(Int)
   ExprSizeof(Expr) // e.g. sizeof(1 + 2)
   Array(Array[Expr], mut ty~: Type?) // e.g. [1, 2, 3]
   Paren(Expr, mut ty~: Type?) // e.g. (1 + 2)
+  Call(String, Array[Expr], mut ty~: Type?) // e.g. func(arg1, arg2)
 } derive(Show, Eq)
 
 pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) {
@@ -61,8 +62,7 @@ pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token])
     [UInt64(u64), .. rest_toks] => (UInt64(u64), rest_toks)
     [Float(f), .. rest_toks] => (Float(f), rest_toks)
     [Double(d), .. rest_toks] => (Double(d), rest_toks)
-    [Lower(var_name), .. rest_toks] => (Var(var_name), rest_toks)
-    [Keyword(Ref), Lower(var_name), .. rest_toks] => (Ref(var_name), rest_toks)
+    [Keyword(Ref), Lower(var_name), .. rest_toks] => (Ref(var_name, ty=None), rest_toks)
     [Keyword(SizeOf), Bracket('('), Upper(type_name), Bracket(')'), .. rest_toks] => {
       (TypeSizeof(Type::parse(type_name)), rest_toks)
     }
@@ -73,6 +73,30 @@ pub fn AtomExpr::parse(tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token])
         panic()
       }
       (ExprSizeof(expr), rest_toks)
+    }
+    [Lower(func_name), Bracket('('), .. rest_toks] => {
+      let args : Array[Expr] = Array::new()
+      let rest_toks = loop rest_toks {
+        [Bracket(')'), .. rest_toks] => break rest_toks
+        _ as rest_toks => {
+          let (arg_expr, rest_toks) = Expr::parse(rest_toks)
+          args.push(arg_expr)
+          match rest_toks {
+            [Symbol(","), .. rest_toks] => continue rest_toks // continue if there is a comma
+            [Bracket(')'), .. rest_toks] => break rest_toks // break if we reach the end of the arguments
+            _ => {
+              println("Parse AtomExpr Error: Unexpected token in function call: \{rest_toks}")
+              panic()
+            }
+          }
+        }
+      }
+      (Call(func_name, args, ty=None), rest_toks)
+    }
+    [Lower(var_name), .. rest_toks] => (Var(var_name, ty=None), rest_toks)
+    [Bracket('['), Bracket(']'), ..] => {
+      println("Parse AtomExpr Error: Empty array literal is not allowed")
+      panic()
     }
     [Bracket('['), .. rest_toks] => {
       let elements : Array[Expr] = Array::new()
@@ -131,13 +155,13 @@ test "AtomExpr::parse" {
   inspect(a, content="ExprSizeof(Apply(Atom(Int(1), ty=None), ty=None))")
 
   let (a, _) = AtomExpr::parse(lex("ref x"))
-  inspect(a, content="Ref(\"x\")")
+  inspect(a, content="Ref(\"x\", ty=None)")
 
   let (a, _) = AtomExpr::parse(lex("x"))
-  inspect(a, content="Var(\"x\")")
+  inspect(a, content="Var(\"x\", ty=None)")
 
   let (a, _) = AtomExpr::parse(lex("[1, 2]"))
-  inspect(a, content="Array([Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None)])")
+  inspect(a, content="Array([Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None)], ty=None)")
 }
 
 ///|
@@ -145,7 +169,6 @@ pub(all) enum ApplyExpr {
   Atom(AtomExpr, mut ty~: Type?) // e.g. 1, x, ref x, sizeof(Int), [1, 2, 3], (1 + 2), ref x
   ArrayGet(ApplyExpr, Expr, mut ty~: Type?) // e.g. arr[i]
   StructAccess(ApplyExpr, String, mut ty~: Type?) // e.g. struct.field
-  Call(ApplyExpr, Array[Expr], mut ty~: Type?) // e.g. func(arg1, arg2)
   Cast(ApplyExpr, Type) // e.g. 1 as Float
 } derive(Show, Eq)
 
@@ -171,26 +194,6 @@ pub fn ApplyExpr::parse(tokens: ArrayView[Token]) -> (ApplyExpr, ArrayView[Token
       apply_expr = ApplyExpr::Cast(apply_expr, type_name)
       continue rest_toks
     }
-    [Bracket('('), .. rest_toks] => {
-      let args : Array[Expr] = Array::new()
-      let rest_toks = loop rest_toks {
-        [Bracket(')'), .. rest_toks] => break rest_toks
-        _ as rest_toks => {
-          let (arg_expr, rest_toks) = Expr::parse(rest_toks)
-          args.push(arg_expr)
-          match rest_toks {
-            [Symbol(","), .. rest_toks] => continue rest_toks // continue if there is a comma
-            [Bracket(')'), .. rest_toks] => break rest_toks // break if we reach the end of the arguments
-            _ => {
-              println("Parse ApplyExpr Error: Unexpected token in function call: \{rest_toks}")
-              panic()
-            }
-          }
-        }
-      }
-      apply_expr = ApplyExpr::Call(apply_expr, args, ty=None)
-      continue rest_toks
-    }
     _ as tokens => return (apply_expr, tokens) // no more applies or accesses
   }
 }
@@ -201,17 +204,10 @@ test "ApplyExpr::parse" {
   inspect(a, content="Atom(Bool(true), ty=None)")
 
   let (a, _) = ApplyExpr::parse(lex("arr[1]"))
-  inspect(a, content="ArrayGet(Atom(Var(\"arr\"), ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None)")
+  inspect(a, content="ArrayGet(Atom(Var(\"arr\", ty=None), ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None)")
 
   let (a, _) = ApplyExpr::parse(lex("p.x"))
-  inspect(a, content="StructAccess(Atom(Var(\"p\"), ty=None), \"x\", ty=None)")
-
-  let (a, _) = ApplyExpr::parse(lex("add(1, 2)"))
-  inspect(
-    a,
-    content="Call(Atom(Var(\"add\"), ty=None), "+
-            "[Apply(Atom(Int(1), ty=None), ty=None), "+
-            "Apply(Atom(Int(2), ty=None), ty=None)], ty=None)")
+  inspect(a, content="StructAccess(Atom(Var(\"p\", ty=None), ty=None), \"x\", ty=None)")
 
   let (a, _) = ApplyExpr::parse(lex("1 as Double"))
   inspect(a, content="Cast(Atom(Int(1), ty=None), Double)")
@@ -349,16 +345,16 @@ test "Expr::parse" {
   inspect(e, content="Add(Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None), ty=None)")
 
   let (e, _) = Expr::parse(lex("x + y * z"))
-  inspect(e, content="Add(Apply(Atom(Var(\"x\"), ty=None), ty=None), Mul(Apply(Atom(Var(\"y\"), ty=None), ty=None), Apply(Atom(Var(\"z\"), ty=None), ty=None), ty=None), ty=None)")
+  inspect(e, content="Add(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Mul(Apply(Atom(Var(\"y\", ty=None), ty=None), ty=None), Apply(Atom(Var(\"z\", ty=None), ty=None), ty=None), ty=None), ty=None)")
 
   let (e, _) = Expr::parse(lex("x * y + z"))
-  inspect(e, content="Add(Mul(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Var(\"y\"), ty=None), ty=None), ty=None), Apply(Atom(Var(\"z\"), ty=None), ty=None), ty=None)")
+  inspect(e, content="Add(Mul(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Var(\"y\", ty=None), ty=None), ty=None), ty=None), Apply(Atom(Var(\"z\", ty=None), ty=None), ty=None), ty=None)")
 }
 
 pub(all) enum LeftValue {
-  Var(String) // e.g. x
-  ArrayGet(LeftValue, Expr) // e.g. arr[i]
-  StructAccess(LeftValue, String) // e.g. struct.field
+  Var(String, mut ty~:Type?) // e.g. x
+  ArrayGet(LeftValue, Expr, mut ty~:Type?) // e.g. arr[i]
+  StructAccess(LeftValue, String, mut ty~: Type?) // e.g. struct.field
 } derive(Show, Eq)
 
 pub fn LeftValue::parse(tokens: ArrayView[Token]) -> (LeftValue, ArrayView[Token]) {
@@ -366,7 +362,7 @@ pub fn LeftValue::parse(tokens: ArrayView[Token]) -> (LeftValue, ArrayView[Token
     println("Parse LeftValue Error: Not a valid left value")
     panic()
   }
-  let mut left_value = LeftValue::Var(var_name)
+  let mut left_value = LeftValue::Var(var_name, ty=None)
   loop rest_toks {
     [Bracket('['), .. rest_toks] => {
       let (index_expr, rest_toks) = Expr::parse(rest_toks)
@@ -374,11 +370,11 @@ pub fn LeftValue::parse(tokens: ArrayView[Token]) -> (LeftValue, ArrayView[Token
         println("Parse LeftValue Error: Expected ']' after array index")
         panic()
       }
-      left_value = LeftValue::ArrayGet(left_value, index_expr)
+      left_value = LeftValue::ArrayGet(left_value, index_expr, ty=None)
       continue rest_toks
     }
     [Symbol("."), Lower(field_name), .. rest_toks] => {
-      left_value = LeftValue::StructAccess(left_value, field_name)
+      left_value = LeftValue::StructAccess(left_value, field_name, ty=None)
       continue rest_toks
     }
     _ as tokens => break (left_value, tokens)
@@ -387,16 +383,16 @@ pub fn LeftValue::parse(tokens: ArrayView[Token]) -> (LeftValue, ArrayView[Token
 
 test "LeftValue::parse" {
   let (lv, _) = LeftValue::parse(lex("x"))
-  inspect(lv, content="Var(\"x\")")
+  inspect(lv, content="Var(\"x\", ty=None)")
 
   let (lv, _) = LeftValue::parse(lex("arr[1]"))
-  inspect(lv, content="ArrayGet(Var(\"arr\"), Apply(Atom(Int(1), ty=None), ty=None))")
+  inspect(lv, content="ArrayGet(Var(\"arr\", ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None)")
 
   let (lv, _) = LeftValue::parse(lex("p.x"))
-  inspect(lv, content="StructAccess(Var(\"p\"), \"x\")")
+  inspect(lv, content="StructAccess(Var(\"p\", ty=None), \"x\", ty=None)")
 
   let (lv, _) = LeftValue::parse(lex("arr[i].x"))
-  inspect(lv, content="StructAccess(ArrayGet(Var(\"arr\"), Apply(Atom(Var(\"i\"), ty=None), ty=None)), \"x\")")
+  inspect(lv, content="StructAccess(ArrayGet(Var(\"arr\", ty=None), Apply(Atom(Var(\"i\", ty=None), ty=None), ty=None), ty=None), \"x\", ty=None)")
 }
 
 pub(all) enum Stmt {
@@ -464,13 +460,13 @@ test "Stmt::parse_let" {
   inspect(s, content="Let(\"x\", Int, Some(Add(Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None), ty=None)))")
 
   let (s, _) = Stmt::parse(lex("let arr: Array[Int] = [1, 2];"))
-  inspect(s, content="Let(\"arr\", Array(Int), Some(Apply(Atom(Array([Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None)]), ty=None), ty=None)))")
+  inspect(s, content="Let(\"arr\", Array(Int), Some(Apply(Atom(Array([Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None)], ty=None), ty=None), ty=None)))")
 
   let (s, _) = Stmt::parse(lex("let x: Int;"))
   inspect(s, content="Let(\"x\", Int, None)")
 
   let (s, _) = Stmt::parse(lex("let xptr: Ptr[Int] = ref x;"))
-  inspect(s, content="Let(\"xptr\", Ptr(Int), Some(Apply(Atom(Ref(\"x\"), ty=None), ty=None)))")
+  inspect(s, content="Let(\"xptr\", Ptr(Int), Some(Apply(Atom(Ref(\"x\", ty=None), ty=None), ty=None)))")
 }
 
 pub fn Stmt::parse_assign(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
@@ -490,16 +486,16 @@ pub fn Stmt::parse_assign(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) 
 
 test "Stmt::parse_assign" {
   let (s, _) = Stmt::parse(lex("x = 1 + 2;"))
-  inspect(s, content="Assign(Var(\"x\"), Add(Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None), ty=None))")
+  inspect(s, content="Assign(Var(\"x\", ty=None), Add(Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None), ty=None))")
 
   let (s, _) = Stmt::parse(lex("arr[1] = 2;"))
-  inspect(s, content="Assign(ArrayGet(Var(\"arr\"), Apply(Atom(Int(1), ty=None), ty=None)), Apply(Atom(Int(2), ty=None), ty=None))")
+  inspect(s, content="Assign(ArrayGet(Var(\"arr\", ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None))")
 
   let (s, _) = Stmt::parse(lex("p.x = 3;"))
-  inspect(s, content="Assign(StructAccess(Var(\"p\"), \"x\"), Apply(Atom(Int(3), ty=None), ty=None))")
+  inspect(s, content="Assign(StructAccess(Var(\"p\", ty=None), \"x\", ty=None), Apply(Atom(Int(3), ty=None), ty=None))")
 
   let (s, _) = Stmt::parse(lex("arr[i].x = 4;"))
-  inspect(s, content="Assign(StructAccess(ArrayGet(Var(\"arr\"), Apply(Atom(Var(\"i\"), ty=None), ty=None)), \"x\"), Apply(Atom(Int(4), ty=None), ty=None))")
+  inspect(s, content="Assign(StructAccess(ArrayGet(Var(\"arr\", ty=None), Apply(Atom(Var(\"i\", ty=None), ty=None), ty=None), ty=None), \"x\", ty=None), Apply(Atom(Int(4), ty=None), ty=None))")
 }
 
 pub fn Stmt::parse_if(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
@@ -557,8 +553,8 @@ test "Stmt::parse if" {
     #| }
     |> lex |> Stmt::parse_if
   inspect(s, 
-    content="If(Gt(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
-            "[Assign(Var(\"b\"), Apply(Atom(Bool(true), ty=None), ty=None))], [])")
+    content="If(Gt(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
+            "[Assign(Var(\"b\", ty=None), Apply(Atom(Bool(true), ty=None), ty=None))], [])")
   let (s, _) =
     #| if x > 0 {
     #|   b = true;
@@ -567,9 +563,9 @@ test "Stmt::parse if" {
     #| }
     |> lex |> Stmt::parse_if
   inspect(s,
-    content="If(Gt(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
-            "[Assign(Var(\"b\"), Apply(Atom(Bool(true), ty=None), ty=None))], "+
-            "[Assign(Var(\"b\"), Apply(Atom(Bool(false), ty=None), ty=None))])")
+    content="If(Gt(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
+            "[Assign(Var(\"b\", ty=None), Apply(Atom(Bool(true), ty=None), ty=None))], "+
+            "[Assign(Var(\"b\", ty=None), Apply(Atom(Bool(false), ty=None), ty=None))])")
 
   let (s, _) =
     #| if x > 0 {
@@ -581,11 +577,11 @@ test "Stmt::parse if" {
     #| }
     |> lex |> Stmt::parse_if
   inspect(s,
-    content="If(Gt(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
-            "[Assign(Var(\"b\"), Apply(Atom(Int(1), ty=None), ty=None))], "+
-            "[If(Lt(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
-            "[Assign(Var(\"b\"), Neg(Apply(Atom(Int(1), ty=None), ty=None), ty=None))], "+
-            "[Assign(Var(\"b\"), Apply(Atom(Int(0), ty=None), ty=None))])])")
+    content="If(Gt(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
+            "[Assign(Var(\"b\", ty=None), Apply(Atom(Int(1), ty=None), ty=None))], "+
+            "[If(Lt(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(0), ty=None), ty=None)), "+
+            "[Assign(Var(\"b\", ty=None), Neg(Apply(Atom(Int(1), ty=None), ty=None), ty=None))], "+
+            "[Assign(Var(\"b\", ty=None), Apply(Atom(Int(0), ty=None), ty=None))])])")
 }
 
 pub fn Stmt::parse_while(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
@@ -624,8 +620,8 @@ test "Stmt::parse while" {
     #| }
     |> lex |> Stmt::parse_while
   inspect(s, 
-    content="While(Lt(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(10), ty=None), ty=None)), "+
-            "[Assign(Var(\"x\"), Add(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None))])")
+    content="While(Lt(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(10), ty=None), ty=None)), "+
+            "[Assign(Var(\"x\", ty=None), Add(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Int(1), ty=None), ty=None), ty=None))])")
 }
 
 pub fn Stmt::parse_return(tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
@@ -749,7 +745,7 @@ test "Function::parse" {
     content="{name: \"add\", "+
             "params: [(\"x\", Int), (\"y\", Int)], "+
             "ret_ty: Int, "+
-            "body: [Return(Some(Add(Apply(Atom(Var(\"x\"), ty=None), ty=None), Apply(Atom(Var(\"y\"), ty=None), ty=None), ty=None)))]}"
+            "body: [Return(Some(Add(Apply(Atom(Var(\"x\", ty=None), ty=None), ty=None), Apply(Atom(Var(\"y\", ty=None), ty=None), ty=None), ty=None)))]}"
   )
 
   let (f, _) = Function::parse(lex("fn get_size(arr: ValIntArray) -> Int { return arr.size; }"))
@@ -758,7 +754,7 @@ test "Function::parse" {
     content="{name: \"get_size\", "+
             "params: [(\"arr\", Struct(\"ValIntArray\"))], "+
             "ret_ty: Int, "+
-            "body: [Return(Some(Apply(StructAccess(Atom(Var(\"arr\"), ty=None), \"size\", ty=None), ty=None)))]}"
+            "body: [Return(Some(Apply(StructAccess(Atom(Var(\"arr\", ty=None), ty=None), \"size\", ty=None), ty=None)))]}"
   )
 }
 
@@ -807,15 +803,25 @@ test "StructDef::parse" {
   inspect(s, content="{name: \"ValArray\", fields: [(\"data\", Ptr(Int)), (\"size\", Int)]}")
 }
 
+pub fn StructDef::get_field_type(self: Self, field_name: String) -> Type? {
+  for field in self.fields {
+    let (name, ty) = field
+    if name == field_name {
+      return Some(ty)
+    }
+  }
+  None
+}
+
 pub struct Program {
-  functions: Array[Function]
-  structs: Array[StructDef]
+  functions: Map[String, Function]
+  structs: Map[String, StructDef]
   main_func: MainFunc?
 }
 
 pub fn Program::parse(tokens: Array[Token]) -> Program {
-  let functions = Array::new()
-  let structs = Array::new()
+  let functions = Map::new()
+  let structs = Map::new()
   let mut main_func = None
   loop tokens[:] {
     [EOF] => break
@@ -826,12 +832,20 @@ pub fn Program::parse(tokens: Array[Token]) -> Program {
     }
     [Keyword(Fn), ..] as toks => {
       let (f, rest_toks) = Function::parse(toks)
-      functions.push(f)
+      guard not(functions.contains(f.name)) else {
+        println("Parse Program Error: Function \{f.name} already defined")
+        panic()
+      }
+      functions.set(f.name, f)
       continue rest_toks
     }
     [Keyword(Struct), ..] as toks => {
       let (s, rest_toks) = StructDef::parse(toks)
-      structs.push(s) // TODO: handle structs
+      guard not(structs.contains(s.name)) else {
+        println("Parse Program Error: Struct \{s.name} already defined")
+        panic()
+      }
+      structs.set(s.name, s)
       continue rest_toks
     }
     _ => {
