@@ -1,5 +1,7 @@
-
+///|
 fnalias @lexer.lex
+
+///|
 typealias @parser.Function
 
 ///|
@@ -11,8 +13,6 @@ fn main {
     #|   }
     #|   return fib(n - 1) + fib(n - 2);
     #| }
-    ;
-
   let func = Function::parse(lex(code))
   println(func)
 }

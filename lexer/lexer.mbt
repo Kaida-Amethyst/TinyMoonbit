@@ -44,7 +44,7 @@ pub fn lex(code : String) -> Array[Token] {
       tokens.push(Token::Terminator)
       continue rest
     }
-    [.."::", .. rest] => {
+    [.. "::", .. rest] => {
       tokens.push(Token::Symbol("::"))
       continue rest
     }
