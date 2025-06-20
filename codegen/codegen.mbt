@@ -191,17 +191,93 @@ pub fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
       let value = self.runOnExpr(expr);
       let _ = self.gen.builder.createRet(value);
     }
+    _ => {
+      println("Error: Unsupported statement: \{stmt}");
+      panic()
+    }
   }
 }
 
-pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise Error {
+pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
+  match left_val {
+    Var(name, ..) => {
+      let addr = self.symbols.get(name).or({
+        println("Error: Variable not found: \{name}");
+        panic()
+      });
+      addr
+    }
+    ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
+      let array_ptr = self.runOnLeftValue(array_val);
+      let index_val = self.runOnExpr(index_expr);
+      let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty);
+      let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index_val]);
+      element_ptr
+    }
+    StructAccess(struct_val, field_name, ..) => {
+      println("Error: StructAccess not implemented yet for field \{field_name} in struct \{struct_val}");
+      panic()
+    }
+    _ => {
+      println("Error: Unsupported left value: \{left_val}");
+      panic()
+    }
+  }
 }
 
-pub fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise Error {
+pub fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
 }
 
-pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise Error {
+pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
 }
 
-pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise Error {
+pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
+  let ctx = self.gen.llvm_ctx;
+  match atomExpr {
+    Bool(true) => ctx.getConstTrue() as &Value
+    Bool(false) => ctx.getConstFalse()
+    Int(v) => ctx.getConstInt32(v)
+    UInt(v) => ctx.getConstInt32(v.reinterpret_as_int())
+    Int64(v) => ctx.getConstInt64(v)
+    UInt64(v) => ctx.getConstInt64(v.reinterpret_as_int64())
+    Float(v) => ctx.getConstFloat(v.to_double())
+    Double(v) => ctx.getConstDouble(v)
+    Var(name, ty=Some(ty)) => {
+      let addr = self.symbols.get(name).or({
+        println("Error: Variable not found: \{name}");
+        panic()
+      });
+      let ty = self.gen.convert_parser_type_to_llvm_type(ty);
+      self.gen.builder.createLoad(ty, addr)
+    }
+    Ref(name, ..) => { // type must be a pointer type
+      self.symbols.get(name).or({
+        println("Error: Reference not found: \{name}");
+        panic()
+      });
+    }
+    TypeSizeof(ty) => {
+      let v = self.gen.convert_parser_type_to_llvm_type(ty).getScalarSizeInBits()
+      self.gen.llvm_ctx.getConstInt32(v.reinterpret_as_int())
+    }
+    ExprSizeof(_) => {
+      println("Error: ExprSizeof not implemented yet");
+      panic()
+    }
+    Array(exprs, ty = Some(Array(ele_ty))) => {
+      let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty);
+      let array_size = exprs.length().reinterpret_as_uint()
+      let arr_ty = self.gen.llvm_ctx.getArrayType(ele_ty, array_size);
+      let array_ptr = self.gen.builder.createAlloca(arr_ty);
+
+      exprs.eachi(
+        (i, expr) => {
+          let value = self.runOnExpr(expr);
+          let index = self.gen.llvm_ctx.getConstInt32(i);
+          let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index]);
+          let _ = self.gen.builder.createStore(value, element_ptr);
+      })
+      array_ptr
+    }
+  }
 }
