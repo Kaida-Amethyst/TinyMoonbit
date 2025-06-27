@@ -1,4 +1,3 @@
-
 pub struct CodeGen {
   parser_prog: @parser.Program
   llvm_ctx: @IR.LLVMContext
@@ -54,6 +53,16 @@ fn Env::subenv(self: Self) -> Env {
     llvm_func: self.llvm_func,
     parent: Some(self),
     symbols: Map::new()
+  }
+}
+
+fn Env::get_symbol(self: Self, name: String) -> &Value? {
+  match self.symbols.get(name) {
+    Some(value) => Some(value)
+    None => match self.parent {
+      Some(parent_env) => parent_env.get_symbol(name)
+      None => None
+    }
   }
 }
 
@@ -191,17 +200,17 @@ pub fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
       let value = self.runOnExpr(expr);
       let _ = self.gen.builder.createRet(value);
     }
-    _ => {
-      println("Error: Unsupported statement: \{stmt}");
-      panic()
-    }
+    //_ => {
+    //  println("Error: Unsupported statement: \{stmt}");
+    //  panic()
+    //}
   }
 }
 
 pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
   match left_val {
     Var(name, ..) => {
-      let addr = self.symbols.get(name).or({
+      let addr = self.get_symbol(name).or({
         println("Error: Variable not found: \{name}");
         panic()
       });
@@ -226,9 +235,267 @@ pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value ra
 }
 
 pub fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
+  match expr {
+    Apply(apply_expr, ..) => self.runOnApplyExpr(apply_expr)
+    Neg(expr, ty=Some(Int|Int64 as ty)) => {
+      let value = self.runOnExpr(expr);
+      //let zero = self.gen.llvm_ctx.getConstInt32(0) as &Value;
+      let zero = match ty {
+        Int => self.gen.llvm_ctx.getConstInt32(0)
+        _ => self.gen.llvm_ctx.getConstInt64(0)
+      }
+      self.gen.builder.createSub(zero, value)
+    }
+    Neg(expr, ty=Some(Float|Double as ty)) => {
+      let value = self.runOnExpr(expr);
+      let zero = match ty {
+        Float => self.gen.llvm_ctx.getConstFloat(0.0)
+        _ => self.gen.llvm_ctx.getConstDouble(0.0)
+      };
+      // should be FNeg
+      self.gen.builder.createFSub(zero, value)
+    }
+    Neg(_, ..) => {
+      println("Error: Unsupported negation type");
+      panic()
+    }
+    Add(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createAdd(lhs_val, rhs_val)
+    }
+    Add(lhs, rhs, ty=Some(Float|Double)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createFAdd(lhs_val, rhs_val)
+    }
+    Add(_, ..) => {
+      println("Error: Unsupported addition type");
+      panic()
+    }
+    Sub(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createSub(lhs_val, rhs_val)
+    }
+    Sub(lhs, rhs, ty=Some(Float|Double)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createFSub(lhs_val, rhs_val)
+    }
+    Sub(_, ..) => {
+      println("Error: Unsupported subtraction type");
+      panic()
+    }
+    Mul(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createMul(lhs_val, rhs_val)
+    }
+    Mul(lhs, rhs, ty=Some(Float|Double)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createFMul(lhs_val, rhs_val)
+    }
+    Mul(_, ..) => {
+      println("Error: Unsupported multiplication type");
+      panic()
+    }
+    Div(lhs, rhs, ty=Some(Int|Int64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createSDiv(lhs_val, rhs_val)
+    }
+    Div(lhs, rhs, ty=Some(UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createUDiv(lhs_val, rhs_val)
+    }
+    Div(lhs, rhs, ty=Some(Float|Double)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createFDiv(lhs_val, rhs_val)
+    }
+    Div(_, ..) => {
+      println("Error: Unsupported division type");
+      panic()
+    }
+    Rem(lhs, rhs, ty=Some(Int|Int64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createSRem(lhs_val, rhs_val)
+    }
+    Rem(lhs, rhs, ty=Some(UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createURem(lhs_val, rhs_val)
+    }
+    Rem(lhs, rhs, ty=Some(Float|Double)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createFRem(lhs_val, rhs_val)
+    }
+    Rem(_, ..) => {
+      println("Error: Unsupported remainder type");
+      panic()
+    }
+    Eq(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpEQ(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOEQ(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for equality");
+          panic()
+        }
+      }
+    }
+    Ne(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpNE(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpONE(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for inequality");
+          panic()
+        }
+      }
+    }
+    Lt(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSLT(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOLT(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for less than");
+          panic()
+        }
+      }
+    }
+    Le(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSLE(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOLE(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for less than or equal");
+          panic()
+        }
+      }
+    }
+    Gt(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSGT(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOGT(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for greater than");
+          panic()
+        }
+      }
+    }
+    Ge(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      match lhs_val.getType().asTypeEnum() {
+        Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSGE(lhs_val, rhs_val)
+        FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOGE(lhs_val, rhs_val)
+        _ => {
+          println("Error: Unsupported type for greater than or equal");
+          panic()
+        }
+      }
+    }
+    And(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createAnd(lhs_val, rhs_val)
+    }
+    Or(lhs, rhs) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createOr(lhs_val, rhs_val)
+    }
+    Shl(lhs, rhs, ..) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createShl(lhs_val, rhs_val)
+    }
+    Shr(lhs, rhs, ty=Some(UInt|UInt64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createLShr(lhs_val, rhs_val)
+    }
+    Shr(lhs, rhs, ty=Some(Int|Int64)) => {
+      let lhs_val = self.runOnExpr(lhs);
+      let rhs_val = self.runOnExpr(rhs);
+      self.gen.builder.createAShr(lhs_val, rhs_val)
+    }
+    Shr(_, ..) => {
+      println("Error: Unsupported shift right type");
+      panic()
+    }
+  }
 }
 
 pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
+  match apply_expr {
+    Atom(atom_expr, ..) => self.runOnAtomExpr(atom_expr)
+    ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
+      let array_ptr = self.runOnApplyExpr(array_val);
+      let index_val = self.runOnExpr(index_expr);
+      let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty);
+      let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index_val]);
+      self.gen.builder.createLoad(ele_ty, element_ptr)
+    }
+    StructAccess(struct_val, field_name, ..) => {
+      println("Error: StructAccess not implemented yet for field \{field_name} in struct \{struct_val}");
+      panic()
+    }
+    Cast(left, cast_ty) => {
+      let value = self.runOnApplyExpr(left);
+      let target_ty = self.gen.convert_parser_type_to_llvm_type(cast_ty);
+      
+      match (value.getType().asTypeEnum(), target_ty.asTypeEnum()) {
+        // Integer to float
+        (Int32Type(_), FloatType(float_ty)) => self.gen.builder.createSIToFP(value, float_ty)
+        (Int32Type(_), DoubleType(double_ty)) => self.gen.builder.createSIToFP(value, double_ty)
+        (Int64Type(_), FloatType(float_ty)) => self.gen.builder.createSIToFP(value, float_ty)
+        (Int64Type(_), DoubleType(double_ty)) => self.gen.builder.createSIToFP(value, double_ty)
+        
+        // Float to integer
+        (FloatType(_), Int32Type(int32_ty)) => self.gen.builder.createFPToSI(value, int32_ty)
+        (FloatType(_), Int64Type(int64_ty)) => self.gen.builder.createFPToSI(value, int64_ty)
+        (DoubleType(_), Int32Type(int32_ty)) => self.gen.builder.createFPToSI(value, int32_ty)
+        (DoubleType(_), Int64Type(int64_ty)) => self.gen.builder.createFPToSI(value, int64_ty)
+        
+        // Float to float
+        (FloatType(_), DoubleType(double_ty)) => self.gen.builder.createFPExt(value, double_ty)
+        (DoubleType(_), FloatType(float_ty)) => self.gen.builder.createFPTrunc(value, float_ty)
+        
+        // Integer to integer
+        (Int32Type(_), Int64Type(int64_ty)) => self.gen.builder.createSExt(value, int64_ty)
+        (Int64Type(_), Int32Type(int32_ty)) => self.gen.builder.createTrunc(value, int32_ty)
+        
+        // Same type
+        (from_ty, to_ty) if from_ty == to_ty => value
+        
+        _ => {
+          println("Error: Unsupported cast from \{value.getType()} to \{target_ty}");
+          panic()
+        }
+      }
+    }
+    _ => {
+      println("Error: Unsupported apply expression: \{apply_expr}");
+      panic()
+    }
+  }
 }
 
 pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
@@ -278,6 +545,25 @@ pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value rais
           let _ = self.gen.builder.createStore(value, element_ptr);
       })
       array_ptr
+    }
+    Paren(expr, ..) => {
+      self.runOnExpr(expr)
+    }
+    Call(func_name, args, ..) => {
+      let func_def = self.gen.parser_prog.functions.get(func_name).or({
+        println("Error: Function not found: \{func_name}");
+        panic()
+      });
+      let llvm_func = self.gen.llvm_prog.functions.get(func_name).or({
+        println("Error: LLVM function not found: \{func_name}");
+        panic()
+      });
+      let args_vals = args.map(arg => self.runOnExpr(arg));
+      self.gen.builder.createCall(llvm_func, args_vals) as &Value
+    }
+    _ => {
+      println("Error: Unsupported atom expression: \{atomExpr}");
+      panic()
     }
   }
 }
