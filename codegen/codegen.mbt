@@ -34,7 +34,7 @@ fn CodeGen::convert_parser_type_to_llvm_type(self: Self, ty: @parser.Type) -> &T
 
 traitalias @IR.Value
 
-struct Env {
+priv struct Env {
   gen: CodeGen
   parser_func: @parser.Function
   llvm_func: @IR.Function
@@ -93,7 +93,7 @@ pub fn CodeGen::run(self: Self) -> Unit raise Error {
   }
 }
 
-pub fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Unit raise Error {
+fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Unit raise Error {
   // 将结构体字段类型转换为LLVM类型
   let field_types = struct_def.fields.map(
     field => {
@@ -106,7 +106,7 @@ pub fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Uni
   let _ = self.llvm_ctx.getStructType(field_types, name=struct_def.name)
 }
 
-pub fn CodeGen::genFuncVal(self: Self, func: @parser.Function) -> @IR.Function raise Error {
+fn CodeGen::genFuncVal(self: Self, func: @parser.Function) -> @IR.Function raise Error {
   let param_tys = func.params.map(
     param_ty => {let (_, ty) = param_ty; self.convert_parser_type_to_llvm_type(ty)}
   );
@@ -116,7 +116,7 @@ pub fn CodeGen::genFuncVal(self: Self, func: @parser.Function) -> @IR.Function r
   self.llvm_prog.addFunction(func_ty, func.name);
 }
 
-pub fn Env::runOnFunc(self: Self) -> Unit raise Error {
+fn Env::runOnFunc(self: Self) -> Unit raise Error {
   let llvm_func = self.llvm_func;
   let parser_func = self.parser_func;
   let builder = self.gen.builder;
@@ -134,7 +134,7 @@ pub fn Env::runOnFunc(self: Self) -> Unit raise Error {
   parser_func.body.each(stmt => self.runOnStmt(stmt));
 }
 
-pub fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
+fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
   match stmt {
     Let(name, ty, None) => {
       let data_ty = self.gen.convert_parser_type_to_llvm_type(ty);
@@ -217,7 +217,7 @@ pub fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
   }
 }
 
-pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
+fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
   match left_val {
     Var(name, ..) => {
       let addr = self.get_symbol(name).or({
@@ -276,7 +276,7 @@ pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value ra
   }
 }
 
-pub fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
+fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
   match expr {
     Apply(apply_expr, ..) => self.runOnApplyExpr(apply_expr)
     Neg(expr, ty=Some(Int|Int64 as ty)) => {
@@ -485,7 +485,7 @@ pub fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
   }
 }
 
-pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
+fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
   match apply_expr {
     Atom(atom_expr, ..) => self.runOnAtomExpr(atom_expr)
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
@@ -580,7 +580,7 @@ pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value 
   }
 }
 
-pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
+fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
   let ctx = self.gen.llvm_ctx;
   match atomExpr {
     Bool(true) => ctx.getConstTrue() as &Value
