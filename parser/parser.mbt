@@ -968,6 +968,17 @@ pub fn StructDef::get_field_type(self : Self, field_name : String) -> Type? {
 }
 
 ///|
+pub fn StructDef::get_field_index(self : Self, field_name : String) -> Int? {
+  for i = 0; i < self.fields.length(); i = i + 1 {
+    let (name, _) = self.fields[i]
+    if name == field_name {
+      return Some(i)
+    }
+  }
+  None
+}
+
+///|
 pub struct Program {
   functions : Map[String, Function]
   structs : Map[String, StructDef]

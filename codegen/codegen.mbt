@@ -93,7 +93,17 @@ pub fn CodeGen::run(self: Self) -> Unit raise Error {
   }
 }
 
-pub fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Unit {
+pub fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Unit raise Error {
+  // 将结构体字段类型转换为LLVM类型
+  let field_types = struct_def.fields.map(
+    field => {
+      let (_, ty) = field
+      self.convert_parser_type_to_llvm_type(ty)
+    }
+  )
+  
+  // 创建LLVM结构体类型并自动注册到context中
+  let _ = self.llvm_ctx.getStructType(field_types, name=struct_def.name)
 }
 
 pub fn CodeGen::genFuncVal(self: Self, func: @parser.Function) -> @IR.Function raise Error {
@@ -224,8 +234,40 @@ pub fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value ra
       element_ptr
     }
     StructAccess(struct_val, field_name, ..) => {
-      println("Error: StructAccess not implemented yet for field \{field_name} in struct \{struct_val}");
-      panic()
+      let struct_ptr = self.runOnLeftValue(struct_val);
+      
+      // 需要根据左值的类型信息来获取结构体定义
+      let struct_type_name = match struct_val {
+        Var(_, ty=Some(Struct(sname))) => sname
+        StructAccess(_, _, ty=Some(Struct(sname))) => sname
+        ArrayGet(_, _, ty=Some(Struct(sname))) => sname
+        _ => {
+          println("Error: Cannot determine struct type for field access");
+          panic()
+        }
+      };
+      
+      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or({
+        println("Error: Struct definition not found: \{struct_type_name}");
+        panic()
+      });
+      
+      let field_index = struct_def.get_field_index(field_name).or({
+        println("Error: Field \{field_name} not found in struct \{struct_type_name}");
+        panic()
+      });
+      
+      // 获取LLVM结构体类型
+      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or({
+        println("Error: LLVM struct type not found: \{struct_type_name}");
+        panic()
+      });
+      
+      // 创建GEP指令：第一个索引0是解引用指针，第二个索引是字段索引
+      let zero = self.gen.llvm_ctx.getConstInt32(0);
+      let field_idx = self.gen.llvm_ctx.getConstInt32(field_index);
+      let field_ptr = self.gen.builder.createGEP(struct_ptr, llvm_struct_type as &Type, [zero, field_idx]);
+      field_ptr
     }
     _ => {
       println("Error: Unsupported left value: \{left_val}");
@@ -454,8 +496,48 @@ pub fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value 
       self.gen.builder.createLoad(ele_ty, element_ptr)
     }
     StructAccess(struct_val, field_name, ..) => {
-      println("Error: StructAccess not implemented yet for field \{field_name} in struct \{struct_val}");
-      panic()
+      let struct_ptr = self.runOnApplyExpr(struct_val);
+      
+      // 需要根据Apply表达式的类型信息来获取结构体定义
+      let struct_type_name = match struct_val {
+        Atom(Var(_, ty=Some(Struct(sname))), ..) => sname
+        StructAccess(_, _, ty=Some(Struct(sname))) => sname
+        ArrayGet(_, _, ty=Some(Struct(sname))) => sname
+        _ => {
+          println("Error: Cannot determine struct type for field access");
+          panic()
+        }
+      };
+      
+      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or({
+        println("Error: Struct definition not found: \{struct_type_name}");
+        panic()
+      });
+      
+      let field_index = struct_def.get_field_index(field_name).or({
+        println("Error: Field \{field_name} not found in struct \{struct_type_name}");
+        panic()
+      });
+      
+      let field_type = struct_def.get_field_type(field_name).or({
+        println("Error: Field type not found for \{field_name}");
+        panic()
+      });
+      
+      // 获取LLVM结构体类型
+      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or({
+        println("Error: LLVM struct type not found: \{struct_type_name}");
+        panic()
+      });
+      
+      // 创建GEP指令获取字段指针
+      let zero = self.gen.llvm_ctx.getConstInt32(0);
+      let field_idx = self.gen.llvm_ctx.getConstInt32(field_index);
+      let field_ptr = self.gen.builder.createGEP(struct_ptr, llvm_struct_type as &Type, [zero, field_idx]);
+      
+      // 加载字段值
+      let field_llvm_type = self.gen.convert_parser_type_to_llvm_type(field_type);
+      self.gen.builder.createLoad(field_llvm_type, field_ptr)
     }
     Cast(left, cast_ty) => {
       let value = self.runOnApplyExpr(left);
@@ -550,10 +632,10 @@ pub fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value rais
       self.runOnExpr(expr)
     }
     Call(func_name, args, ..) => {
-      let func_def = self.gen.parser_prog.functions.get(func_name).or({
-        println("Error: Function not found: \{func_name}");
-        panic()
-      });
+      //let func_def = self.gen.parser_prog.functions.get(func_name).or({
+      //  println("Error: Function not found: \{func_name}");
+      //  panic()
+      //});
       let llvm_func = self.gen.llvm_prog.functions.get(func_name).or({
         println("Error: LLVM function not found: \{func_name}");
         panic()
