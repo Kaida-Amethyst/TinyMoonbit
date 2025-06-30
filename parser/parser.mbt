@@ -849,7 +849,7 @@ pub fn Function::parse(
 ///|
 pub struct MainFunc {
   body : Array[Stmt]
-}
+} derive(Show)
 
 ///|
 pub fn MainFunc::parse(
@@ -983,7 +983,7 @@ pub struct Program {
   functions : Map[String, Function]
   structs : Map[String, StructDef]
   main_func : MainFunc?
-}
+} derive(Show)
 
 ///|
 pub fn Program::parse(tokens : Array[Token]) -> Program {

@@ -12,6 +12,12 @@ pub fn CodeGen::init(parser_prog: @parser.Program) -> CodeGen {
   CodeGen::{ parser_prog, llvm_ctx, llvm_prog, builder }
 }
 
+pub fn CodeGen::dump(self: Self) -> Unit {
+  self.llvm_prog.functions.values().each(
+    f => println(f)
+  )
+}
+
 traitalias @IR.Type
 
 fn CodeGen::convert_parser_type_to_llvm_type(self: Self, ty: @parser.Type) -> &Type {
@@ -25,7 +31,7 @@ fn CodeGen::convert_parser_type_to_llvm_type(self: Self, ty: @parser.Type) -> &T
     Double => ctx.getDoubleTy()
     Ptr(_) => ctx.getPtrTy()
     Array(_) => ctx.getPtrTy()
-    Struct(sname) => ctx.getStructTypeByName(sname).or({
+    Struct(sname) => ctx.getStructTypeByName(sname).or_else(() => {
       println("Error: Struct type not found: \{sname}");
       panic()
     })
@@ -78,12 +84,12 @@ pub fn CodeGen::run(self: Self) -> Unit raise Error {
   )
 
   for func_name in self.parser_prog.functions.keys() {
-    let parser_func = self.parser_prog.functions.get(func_name).or({
+    let parser_func = self.parser_prog.functions.get(func_name).or_else(() => {
       println("Error: Function not found: \{func_name}");
       panic()
     });
 
-    let llvm_func = llvm_funcs.get(func_name).or({
+    let llvm_func = llvm_funcs.get(func_name).or_else(() => {
       println("Error: LLVM function not found: \{func_name}");
       panic()
     });
@@ -125,9 +131,12 @@ fn Env::runOnFunc(self: Self) -> Unit raise Error {
 
   parser_func.params.eachi(
     (i, name_ty) => {
-      let (name, _) = name_ty;
+      let (name, ty) = name_ty;
       let param_val = llvm_func.getArg(i).unwrap()
-      self.symbols.set(name, param_val);
+      let ty = self.gen.convert_parser_type_to_llvm_type(ty);
+      let alloca = builder.createAlloca(ty);
+      let _ = builder.createStore(param_val, alloca);
+      self.symbols.set(name, alloca);
     }
   );
 
@@ -220,7 +229,7 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
 fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
   match left_val {
     Var(name, ..) => {
-      let addr = self.get_symbol(name).or({
+      let addr = self.get_symbol(name).or_else(() => {
         println("Error: Variable not found: \{name}");
         panic()
       });
@@ -247,18 +256,18 @@ fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise 
         }
       };
       
-      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or({
+      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or_else(() => {
         println("Error: Struct definition not found: \{struct_type_name}");
         panic()
       });
       
-      let field_index = struct_def.get_field_index(field_name).or({
+      let field_index = struct_def.get_field_index(field_name).or_else(() => {
         println("Error: Field \{field_name} not found in struct \{struct_type_name}");
         panic()
       });
       
       // 获取LLVM结构体类型
-      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or({
+      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or_else(() => {
         println("Error: LLVM struct type not found: \{struct_type_name}");
         panic()
       });
@@ -509,23 +518,23 @@ fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value rais
         }
       };
       
-      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or({
+      let struct_def = self.gen.parser_prog.structs.get(struct_type_name).or_else(() => {
         println("Error: Struct definition not found: \{struct_type_name}");
         panic()
       });
       
-      let field_index = struct_def.get_field_index(field_name).or({
+      let field_index = struct_def.get_field_index(field_name).or_else(() => {
         println("Error: Field \{field_name} not found in struct \{struct_type_name}");
         panic()
       });
       
-      let field_type = struct_def.get_field_type(field_name).or({
+      let field_type = struct_def.get_field_type(field_name).or_else(() => {
         println("Error: Field type not found for \{field_name}");
         panic()
       });
       
       // 获取LLVM结构体类型
-      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or({
+      let llvm_struct_type = self.gen.llvm_ctx.getStructTypeByName(struct_type_name).or_else(() => {
         println("Error: LLVM struct type not found: \{struct_type_name}");
         panic()
       });
@@ -592,7 +601,7 @@ fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
     Float(v) => ctx.getConstFloat(v.to_double())
     Double(v) => ctx.getConstDouble(v)
     Var(name, ty=Some(ty)) => {
-      let addr = self.symbols.get(name).or({
+      let addr = self.get_symbol(name).or_else(() => {
         println("Error: Variable not found: \{name}");
         panic()
       });
@@ -600,7 +609,7 @@ fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
       self.gen.builder.createLoad(ty, addr)
     }
     Ref(name, ..) => { // type must be a pointer type
-      self.symbols.get(name).or({
+      self.symbols.get(name).or_else(() => {
         println("Error: Reference not found: \{name}");
         panic()
       });
@@ -636,7 +645,7 @@ fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
       //  println("Error: Function not found: \{func_name}");
       //  panic()
       //});
-      let llvm_func = self.gen.llvm_prog.functions.get(func_name).or({
+      let llvm_func = self.gen.llvm_prog.functions.get(func_name).or_else(() => {
         println("Error: LLVM function not found: \{func_name}");
         panic()
       });
