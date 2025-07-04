@@ -6,6 +6,8 @@ typealias @parser.Function
 
 fn testcode1 () -> Unit {
   let code =
+    #| extern fn print_int(x : Int) -> Unit;
+    #|
     #| fn fib(n : Int) -> Int {
     #|   if n <= 1 {
     #|     return n;

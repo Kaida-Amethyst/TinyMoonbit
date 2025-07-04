@@ -1,5 +1,7 @@
 
 ```moonbit skip
+extern fn print_int(x:Int) -> Unit ;
+
 fn fib(n : Int) -> Int {
   if n <= 1 {
     return n;
@@ -13,6 +15,8 @@ fn main {
 ```
 
 ```moonbit skip
+extern fn print_int(x: Int) -> Unit;
+
 fn caltz(n: Int, cnt: Int) -> Int {
   if n == 1 {
     return cnt;

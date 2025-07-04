@@ -38,6 +38,16 @@ fn CodeGen::convert_parser_type_to_llvm_type(self: Self, ty: @parser.Type) -> &T
   }
 }
 
+fn CodeGen::getFunction(self: Self, name: String) -> @IR.Function? {
+  match self.llvm_prog.functions.get(name) {
+    Some(func) => Some(func) 
+    None => {
+      println("CodeGen Error: Function not found: \{name}");
+      panic()
+    }
+  }
+}
+
 traitalias @IR.Value
 
 priv struct Env {
@@ -82,6 +92,9 @@ pub fn CodeGen::emitProg(self: Self) -> Unit raise Error {
   self.parser_prog.functions.each(
     (name, func) => llvm_funcs.set(name, self.genFuncVal(func))
   )
+  self.parser_prog.externs.each(
+    (name, func) => llvm_funcs.set(name, self.genFuncVal(func))
+  );
 
   for func_name in self.parser_prog.functions.keys() {
     let parser_func = self.parser_prog.functions.get(func_name).or_else(() => {
@@ -642,7 +655,7 @@ fn Env::emitAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
     }
     Paren(expr, ..) => self.emitExpr(expr)
     Call(func_name, args, ..) => {
-      let llvm_func = self.gen.llvm_prog.functions.get(func_name).or_else(() => {
+      let llvm_func = self.gen.getFunction(func_name).or_else(() => {
         println("Error: LLVM function not found: \{func_name}");
         panic()
       });

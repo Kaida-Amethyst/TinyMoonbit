@@ -476,13 +476,23 @@ pub fn TypeCheck::check_atom_expr(self : Self, atom_expr : AtomExpr) -> Type {
       expr_ty
     }
     Call(func_name, args, ..) as call_expr => {
-      let func = self.prog.functions
-        .get(func_name)
-        .or_else(() => {
+      //let func = self.prog.functions
+      //  .get(func_name)
+      //  .or_else(() => {
+      //      println("Error: Function \{func_name} not found in program")
+      //      panic()
+      //    }
+      //  )
+      let func = match self.prog.functions.get(func_name) {
+        Some(f) => f
+        None => match self.prog.externs.get(func_name) {
+          Some(f) => f
+          None => {
             println("Error: Function \{func_name} not found in program")
             panic()
           }
-        )
+        }
+      }
       let args_tys = args.map(self.check_expr(_))
       let param_tys = func.params.map(param => param.1)
       guard args_tys == param_tys else {
