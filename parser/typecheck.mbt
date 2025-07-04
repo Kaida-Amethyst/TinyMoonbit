@@ -144,6 +144,7 @@ pub fn TypeCheck::check_stmt(self : Self, stmt : Stmt) -> Unit {
         panic()
       }
     }
+    Expr(expr) => {let _ = self.check_expr(expr)}
   }
 }
 

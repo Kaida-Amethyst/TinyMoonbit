@@ -4,8 +4,7 @@ fnalias @lexer.lex
 ///|
 typealias @parser.Function
 
-///|
-fn main {
+fn testcode1 () -> Unit {
   let code =
     #| fn fib(n : Int) -> Int {
     #|   if n <= 1 {
@@ -13,13 +12,27 @@ fn main {
     #|   }
     #|   return fib(n - 1) + fib(n - 2);
     #| }
+    #|
+    #| fn main {
+    #|   print_int(fib(10));
+    #| }
   let prog = @parser.Program::parse(lex(code))
   let _ = @parser.TypeCheck::check_prog(prog)
 
   let codegen = @codegen.CodeGen::init(prog)
-  match (try? codegen.run()) {
-    Ok(_) => println("Code generation successful!")
+  match (try? codegen.emitProg()) {
+    Ok(_) => ()
     Err(e) => println("Error during code generation: \{e}")
   }
   codegen.dump()
 }
+
+///|
+fn main {
+  testcode1()
+}
+
+test {
+  ignore(testcode1)
+}
+

@@ -144,8 +144,8 @@ println(sz_double); // 通常输出 8
 
 ```moonbit
 struct Point {
-  x: Double,
-  y: Double,
+  x: Double;
+  y: Double
 }
 
 // 在栈上分配

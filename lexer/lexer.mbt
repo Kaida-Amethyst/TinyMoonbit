@@ -13,7 +13,7 @@ pub(all) enum Keyword {
 } derive(Show, Eq)
 
 ///|
-pub(all) enum Token {
+pub enum Token {
   Bool(Bool)
   Int(Int)
   Int64(Int64)

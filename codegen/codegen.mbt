@@ -72,10 +72,10 @@ fn Env::get_symbol(self: Self, name: String) -> &Value? {
   }
 }
 
-pub fn CodeGen::run(self: Self) -> Unit raise Error {
+pub fn CodeGen::emitProg(self: Self) -> Unit raise Error {
   // collect struct definitions and functions types
   self.parser_prog.structs.values().each(
-    struct_def => self.runOnStructDef(struct_def)
+    struct_def => self.emitStructDef(struct_def)
   )
 
   let llvm_funcs = Map::new()
@@ -95,11 +95,11 @@ pub fn CodeGen::run(self: Self) -> Unit raise Error {
     });
 
     let env = Env::new(self, parser_func, llvm_func);
-    env.runOnFunc();
+    env.emitFunc();
   }
 }
 
-fn CodeGen::runOnStructDef(self: Self, struct_def: @parser.StructDef) -> Unit raise Error {
+fn CodeGen::emitStructDef(self: Self, struct_def: @parser.StructDef) -> Unit raise Error {
   // 将结构体字段类型转换为LLVM类型
   let field_types = struct_def.fields.map(
     field => {
@@ -122,7 +122,7 @@ fn CodeGen::genFuncVal(self: Self, func: @parser.Function) -> @IR.Function raise
   self.llvm_prog.addFunction(func_ty, func.name);
 }
 
-fn Env::runOnFunc(self: Self) -> Unit raise Error {
+fn Env::emitFunc(self: Self) -> Unit raise {
   let llvm_func = self.llvm_func;
   let parser_func = self.parser_func;
   let builder = self.gen.builder;
@@ -140,10 +140,10 @@ fn Env::runOnFunc(self: Self) -> Unit raise Error {
     }
   );
 
-  parser_func.body.each(stmt => self.runOnStmt(stmt));
+  parser_func.body.each(stmt => self.emitStmt(stmt));
 }
 
-fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
+fn Env::emitStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
   match stmt {
     Let(name, ty, None) => {
       let data_ty = self.gen.convert_parser_type_to_llvm_type(ty);
@@ -155,16 +155,16 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
       let alloca = self.gen.builder.createAlloca(data_ty);
       self.symbols.set(name, alloca);
 
-      let value = self.runOnExpr(expr);
+      let value = self.emitExpr(expr);
       let _ = self.gen.builder.createStore(value, alloca);
     }
     Assign(left_val, expr) => {
-      let ptr = self.runOnLeftValue(left_val);
-      let value = self.runOnExpr(expr);
+      let ptr = self.emitLeftValue(left_val);
+      let value = self.emitExpr(expr);
       let _ =self.gen.builder.createStore(value, ptr);
     }
     If(cond, then_stmts, []) => {
-      let cond_val = self.runOnExpr(cond);
+      let cond_val = self.emitExpr(cond);
       let then_block = self.llvm_func.addBasicBlock();
       let merge_block = self.llvm_func.addBasicBlock();
 
@@ -172,13 +172,13 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
 
       self.gen.builder.setInsertPoint(then_block);
       let then_env = self.subenv();
-      then_stmts.each(s => then_env.runOnStmt(s))
+      then_stmts.each(s => then_env.emitStmt(s))
       let _ = self.gen.builder.createBr(merge_block);
 
       self.gen.builder.setInsertPoint(merge_block);
     }
     If(cond, then_stmts, else_stmts) => {
-      let cond_val = self.runOnExpr(cond);
+      let cond_val = self.emitExpr(cond);
       let then_block = self.llvm_func.addBasicBlock();
       let else_block = self.llvm_func.addBasicBlock();
       let merge_block = self.llvm_func.addBasicBlock();
@@ -187,12 +187,12 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
 
       self.gen.builder.setInsertPoint(then_block);
       let then_env = self.subenv();
-      then_stmts.each(s => then_env.runOnStmt(s)); 
+      then_stmts.each(s => then_env.emitStmt(s)); 
       let _ = self.gen.builder.createBr(merge_block);
 
       self.gen.builder.setInsertPoint(else_block);
       let else_env = self.subenv();
-      else_stmts.each(s => else_env.runOnStmt(s));
+      else_stmts.each(s => else_env.emitStmt(s));
       let _ = self.gen.builder.createBr(merge_block);
 
       self.gen.builder.setInsertPoint(merge_block);
@@ -202,12 +202,12 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
       let body_block = self.llvm_func.addBasicBlock();
       let merge_block = self.llvm_func.addBasicBlock();
 
-      let cond_val = self.runOnExpr(cond);
+      let cond_val = self.emitExpr(cond);
       let _ = self.gen.builder.createCondBr(cond_val, body_block, merge_block);
 
       self.gen.builder.setInsertPoint(body_block);
       let body_env = self.subenv();
-      stmts.each(s => body_env.runOnStmt(s));
+      stmts.each(s => body_env.emitStmt(s));
       let _ = self.gen.builder.createBr(cond_block);
 
       self.gen.builder.setInsertPoint(merge_block);
@@ -216,8 +216,11 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
       let _ = self.gen.builder.createRetVoid();
     }
     Return(Some(expr)) => {
-      let value = self.runOnExpr(expr);
+      let value = self.emitExpr(expr);
       let _ = self.gen.builder.createRet(value);
+    }
+    Expr(expr) => {
+      let _ = self.emitExpr(expr);
     }
     //_ => {
     //  println("Error: Unsupported statement: \{stmt}");
@@ -226,7 +229,7 @@ fn Env::runOnStmt(self: Self, stmt: @parser.Stmt) -> Unit raise Error {
   }
 }
 
-fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
+fn Env::emitLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise {
   match left_val {
     Var(name, ..) => {
       let addr = self.get_symbol(name).or_else(() => {
@@ -236,14 +239,14 @@ fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise 
       addr
     }
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
-      let array_ptr = self.runOnLeftValue(array_val);
-      let index_val = self.runOnExpr(index_expr);
+      let array_ptr = self.emitLeftValue(array_val);
+      let index_val = self.emitExpr(index_expr);
       let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty);
       let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index_val]);
       element_ptr
     }
     StructAccess(struct_val, field_name, ..) => {
-      let struct_ptr = self.runOnLeftValue(struct_val);
+      let struct_ptr = self.emitLeftValue(struct_val);
       
       // 需要根据左值的类型信息来获取结构体定义
       let struct_type_name = match struct_val {
@@ -285,11 +288,11 @@ fn Env::runOnLeftValue(self: Self, left_val: @parser.LeftValue) -> &Value raise 
   }
 }
 
-fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
+fn Env::emitExpr(self: Self, expr: @parser.Expr) -> &Value raise {
   match expr {
-    Apply(apply_expr, ..) => self.runOnApplyExpr(apply_expr)
+    Apply(apply_expr, ..) => self.emitApplyExpr(apply_expr)
     Neg(expr, ty=Some(Int|Int64 as ty)) => {
-      let value = self.runOnExpr(expr);
+      let value = self.emitExpr(expr);
       //let zero = self.gen.llvm_ctx.getConstInt32(0) as &Value;
       let zero = match ty {
         Int => self.gen.llvm_ctx.getConstInt32(0)
@@ -298,7 +301,7 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       self.gen.builder.createSub(zero, value)
     }
     Neg(expr, ty=Some(Float|Double as ty)) => {
-      let value = self.runOnExpr(expr);
+      let value = self.emitExpr(expr);
       let zero = match ty {
         Float => self.gen.llvm_ctx.getConstFloat(0.0)
         _ => self.gen.llvm_ctx.getConstDouble(0.0)
@@ -311,13 +314,13 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Add(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createAdd(lhs_val, rhs_val)
     }
     Add(lhs, rhs, ty=Some(Float|Double)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createFAdd(lhs_val, rhs_val)
     }
     Add(_, ..) => {
@@ -325,13 +328,13 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Sub(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createSub(lhs_val, rhs_val)
     }
     Sub(lhs, rhs, ty=Some(Float|Double)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createFSub(lhs_val, rhs_val)
     }
     Sub(_, ..) => {
@@ -339,13 +342,13 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Mul(lhs, rhs, ty=Some(Int|Int64|UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createMul(lhs_val, rhs_val)
     }
     Mul(lhs, rhs, ty=Some(Float|Double)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createFMul(lhs_val, rhs_val)
     }
     Mul(_, ..) => {
@@ -353,18 +356,18 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Div(lhs, rhs, ty=Some(Int|Int64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createSDiv(lhs_val, rhs_val)
     }
     Div(lhs, rhs, ty=Some(UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createUDiv(lhs_val, rhs_val)
     }
     Div(lhs, rhs, ty=Some(Float|Double)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createFDiv(lhs_val, rhs_val)
     }
     Div(_, ..) => {
@@ -372,18 +375,18 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Rem(lhs, rhs, ty=Some(Int|Int64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createSRem(lhs_val, rhs_val)
     }
     Rem(lhs, rhs, ty=Some(UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createURem(lhs_val, rhs_val)
     }
     Rem(lhs, rhs, ty=Some(Float|Double)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createFRem(lhs_val, rhs_val)
     }
     Rem(_, ..) => {
@@ -391,8 +394,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       panic()
     }
     Eq(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpEQ(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOEQ(lhs_val, rhs_val)
@@ -403,8 +406,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     Ne(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpNE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpONE(lhs_val, rhs_val)
@@ -415,8 +418,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     Lt(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSLT(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOLT(lhs_val, rhs_val)
@@ -427,8 +430,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     Le(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSLE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOLE(lhs_val, rhs_val)
@@ -439,8 +442,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     Gt(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSGT(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOGT(lhs_val, rhs_val)
@@ -451,8 +454,8 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     Ge(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       match lhs_val.getType().asTypeEnum() {
         Int32Type(_) | Int64Type(_) => self.gen.builder.createICmpSGE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) => self.gen.builder.createFCmpOGE(lhs_val, rhs_val)
@@ -463,28 +466,28 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
       }
     }
     And(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createAnd(lhs_val, rhs_val)
     }
     Or(lhs, rhs) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createOr(lhs_val, rhs_val)
     }
     Shl(lhs, rhs, ..) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createShl(lhs_val, rhs_val)
     }
     Shr(lhs, rhs, ty=Some(UInt|UInt64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createLShr(lhs_val, rhs_val)
     }
     Shr(lhs, rhs, ty=Some(Int|Int64)) => {
-      let lhs_val = self.runOnExpr(lhs);
-      let rhs_val = self.runOnExpr(rhs);
+      let lhs_val = self.emitExpr(lhs);
+      let rhs_val = self.emitExpr(rhs);
       self.gen.builder.createAShr(lhs_val, rhs_val)
     }
     Shr(_, ..) => {
@@ -494,18 +497,18 @@ fn Env::runOnExpr(self: Self, expr: @parser.Expr) -> &Value raise {
   }
 }
 
-fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
+fn Env::emitApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value raise {
   match apply_expr {
-    Atom(atom_expr, ..) => self.runOnAtomExpr(atom_expr)
+    Atom(atom_expr, ..) => self.emitAtomExpr(atom_expr)
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
-      let array_ptr = self.runOnApplyExpr(array_val);
-      let index_val = self.runOnExpr(index_expr);
+      let array_ptr = self.emitApplyExpr(array_val);
+      let index_val = self.emitExpr(index_expr);
       let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty);
       let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index_val]);
       self.gen.builder.createLoad(ele_ty, element_ptr)
     }
     StructAccess(struct_val, field_name, ..) => {
-      let struct_ptr = self.runOnApplyExpr(struct_val);
+      let struct_ptr = self.emitApplyExpr(struct_val);
       
       // 需要根据Apply表达式的类型信息来获取结构体定义
       let struct_type_name = match struct_val {
@@ -549,7 +552,7 @@ fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value rais
       self.gen.builder.createLoad(field_llvm_type, field_ptr)
     }
     Cast(left, cast_ty) => {
-      let value = self.runOnApplyExpr(left);
+      let value = self.emitApplyExpr(left);
       let target_ty = self.gen.convert_parser_type_to_llvm_type(cast_ty);
       
       match (value.getType().asTypeEnum(), target_ty.asTypeEnum()) {
@@ -589,7 +592,7 @@ fn Env::runOnApplyExpr(self: Self, apply_expr: @parser.ApplyExpr) -> &Value rais
   }
 }
 
-fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
+fn Env::emitAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
   let ctx = self.gen.llvm_ctx;
   match atomExpr {
     Bool(true) => ctx.getConstTrue() as &Value
@@ -630,26 +633,20 @@ fn Env::runOnAtomExpr(self: Self, atomExpr: @parser.AtomExpr) -> &Value raise {
 
       exprs.eachi(
         (i, expr) => {
-          let value = self.runOnExpr(expr);
+          let value = self.emitExpr(expr);
           let index = self.gen.llvm_ctx.getConstInt32(i);
           let element_ptr = self.gen.builder.createGEP(array_ptr, ele_ty, [index]);
           let _ = self.gen.builder.createStore(value, element_ptr);
       })
       array_ptr
     }
-    Paren(expr, ..) => {
-      self.runOnExpr(expr)
-    }
+    Paren(expr, ..) => self.emitExpr(expr)
     Call(func_name, args, ..) => {
-      //let func_def = self.gen.parser_prog.functions.get(func_name).or({
-      //  println("Error: Function not found: \{func_name}");
-      //  panic()
-      //});
       let llvm_func = self.gen.llvm_prog.functions.get(func_name).or_else(() => {
         println("Error: LLVM function not found: \{func_name}");
         panic()
       });
-      let args_vals = args.map(arg => self.runOnExpr(arg));
+      let args_vals = args.map(arg => self.emitExpr(arg));
       self.gen.builder.createCall(llvm_func, args_vals) as &Value
     }
     _ => {

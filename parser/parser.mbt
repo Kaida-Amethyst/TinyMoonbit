@@ -434,10 +434,11 @@ test "LeftValue::parse" {
 ///|
 pub(all) enum Stmt {
   Let(String, Type, Expr?) // e.g. let x: Int = 1 or let x: Int
-  Assign(LeftValue, Expr) // e.g. x = 1 or arr[i] = 2 or arr[i].field = 3
   If(Expr, Array[Stmt], Array[Stmt]) // e.g. if (x > 0) { ... } else { ... }
   While(Expr, Array[Stmt]) // e.g. while (x < 10) { ... }
   Return(Expr?) // e.g. return 1 or return
+  Assign(LeftValue, Expr) // e.g. x = 1 or arr[i] = 2 or arr[i].field = 3
+  Expr(Expr) // single expression statement, e.g. print_int(1);
 } derive(Show, Eq)
 
 ///|
@@ -447,7 +448,13 @@ pub fn Stmt::parse(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
     [Keyword(If), ..] => Stmt::parse_if(tokens)
     [Keyword(While), ..] => Stmt::parse_while(tokens)
     [Keyword(Return), ..] => Stmt::parse_return(tokens)
-    [Lower(_), ..] => Stmt::parse_assign(tokens)
+    [Lower(_), ..] => {
+      let (_, rest_toks) = ApplyExpr::parse(tokens)
+      match rest_toks[0] {
+        Operator("=") => Stmt::parse_assign(tokens)
+        _ => Stmt::parse_expr(tokens)
+      }
+    }
     _ => {
       println("Parse Statement Error: Unexpected token in statement: \{tokens}")
       panic()
@@ -763,6 +770,17 @@ test "Stmt::parse return" {
     s,
     content="Return(Some(Add(Apply(Atom(Int(1), ty=None), ty=None), Apply(Atom(Int(2), ty=None), ty=None), ty=None)))",
   )
+}
+
+pub fn Stmt::parse_expr(
+  tokens : ArrayView[Token]
+) -> (Stmt, ArrayView[Token]) {
+  let (expr, rest_toks) = Expr::parse(tokens)
+  guard rest_toks is [Terminator, .. rest_toks] else {
+    println("Parse Expression Statement Error: Expected ';' after expression")
+    panic()
+  }
+  (Stmt::Expr(expr), rest_toks)
 }
 
 ///|
