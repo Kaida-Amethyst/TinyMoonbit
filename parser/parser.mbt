@@ -206,6 +206,11 @@ pub fn ApplyExpr::parse(
       apply_expr = ApplyExpr::StructAccess(apply_expr, field_name, ty=None)
       continue rest_toks
     }
+    [Keyword(As), Upper(type_name), Bracket('['), Upper(sub), Bracket(']'), .. rest_toks] => {
+      let type_name = Type::parse(type_name, sub=Some(sub))
+      apply_expr = ApplyExpr::Cast(apply_expr, type_name)
+      continue rest_toks
+    }
     [Keyword(As), Upper(type_name), .. rest_toks] => {
       let type_name = Type::parse(type_name)
       apply_expr = ApplyExpr::Cast(apply_expr, type_name)
@@ -496,6 +501,12 @@ pub fn Stmt::parse_let(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
       let type_name = Type::parse(type_name, sub=Some(sub))
       let (expr, rest_toks) = Expr::parse(rest_toks)
       let stmt = Stmt::Let(var_name, type_name, Some(expr))
+      guard rest_toks is [Terminator, ..rest_toks] else {
+        println(
+          "Parse Let Statement Error: Expected ';' after array initialization",
+        )
+        panic()
+      }
       (stmt, rest_toks)
     }
     // let x: Int;
@@ -523,6 +534,12 @@ pub fn Stmt::parse_let(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
       let type_name = Type::parse(type_name)
       let (expr, rest_toks) = Expr::parse(rest_toks)
       let stmt = Stmt::Let(var_name, type_name, Some(expr))
+      guard rest_toks is [Terminator, ..rest_toks] else {
+        println(
+          "Parse Let Statement Error: Expected ';' after array initialization",
+        )
+        panic()
+      }
       (stmt, rest_toks)
     }
     _ => {
@@ -772,9 +789,8 @@ test "Stmt::parse return" {
   )
 }
 
-pub fn Stmt::parse_expr(
-  tokens : ArrayView[Token]
-) -> (Stmt, ArrayView[Token]) {
+///|
+pub fn Stmt::parse_expr(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) {
   let (expr, rest_toks) = Expr::parse(tokens)
   guard rest_toks is [Terminator, .. rest_toks] else {
     println("Parse Expression Statement Error: Expected ';' after expression")
@@ -791,8 +807,12 @@ pub(all) struct Function {
   body : Array[Stmt]
 } derive(Show, Eq)
 
-pub fn Function::parse_extern(tokens: ArrayView[Token]) -> (Function, ArrayView[Token]) {
-  guard tokens is [Keyword(Extern), Keyword(Fn), Lower(fname), Bracket('('), .. tokens] else {
+///|
+pub fn Function::parse_extern(
+  tokens : ArrayView[Token]
+) -> (Function, ArrayView[Token]) {
+  guard tokens
+    is [Keyword(Extern), Keyword(Fn), Lower(fname), Bracket('('), .. tokens] else {
     println("Parse Function Error: Not a valid extern function declaration")
     panic()
   }
@@ -856,7 +876,8 @@ pub fn Function::parse_extern(tokens: ArrayView[Token]) -> (Function, ArrayView[
 pub fn Function::parse(
   tokens : ArrayView[Token]
 ) -> (Function, ArrayView[Token]) {
-  let (fname, params, ret_ty, tokens) = if tokens is [Keyword(Fn), Lower(fname), Bracket('('), .. tokens] {
+  let (fname, params, ret_ty, tokens) = if tokens
+    is [Keyword(Fn), Lower(fname), Bracket('('), .. tokens] {
     let params : Array[(String, Type)] = Array::new()
     let tokens = loop tokens {
       // Ptr or Array
@@ -882,7 +903,9 @@ pub fn Function::parse(
       // `) ->`, break 
       [Bracket(')'), LeftArrow, .. rest_toks] => break rest_toks
       _ as tokens => {
-        println("Parse Function Error: Unexpected token in parameters: \{tokens}")
+        println(
+          "Parse Function Error: Unexpected token in parameters: \{tokens}",
+        )
         panic()
       }
     }
@@ -1054,7 +1077,9 @@ pub fn Program::parse(tokens : Array[Token]) -> Program {
     [Keyword(Extern), ..] as toks => {
       let (f, rest_toks) = Function::parse_extern(toks)
       guard not(functions.contains(f.name)) else {
-        println("Parse Program Error: Extern function \{f.name} already defined")
+        println(
+          "Parse Program Error: Extern function \{f.name} already defined",
+        )
         panic()
       }
       externs.set(f.name, f)

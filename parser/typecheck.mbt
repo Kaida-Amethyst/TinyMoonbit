@@ -144,7 +144,10 @@ pub fn TypeCheck::check_stmt(self : Self, stmt : Stmt) -> Unit {
         panic()
       }
     }
-    Expr(expr) => {let _ = self.check_expr(expr)}
+    Expr(expr) => {
+      let _ = self.check_expr(expr)
+
+    }
   }
 }
 
@@ -329,14 +332,22 @@ pub fn TypeCheck::check_left_value(self : Self, left_value : LeftValue) -> Type 
         println("ArrayGet Index Type Mismatch: Expected Int, got \{index_ty}")
         panic()
       }
-      guard left_ty is Array(arr_ty) else {
-        println(
-          "ArrayGet Left Value Type Mismatch: Expected ArrayType, got \{left_ty}",
-        )
-        panic()
+      match left_ty {
+        Array(ele_ty) => {
+          array_get.ty = Some(ele_ty)
+          ele_ty
+        }
+        Ptr(ele_ty) => {
+          array_get.ty = Some(ele_ty)
+          ele_ty
+        }
+        _ => {
+          println(
+            "ArrayGet Left Value Type Mismatch: Expected ArrayType or Pointer, got \{left_ty}",
+          )
+          panic()
+        }
       }
-      array_get.ty = Some(arr_ty)
-      arr_ty
     }
     StructAccess(left, field_name, ..) as struct_access => {
       let left_ty = self.check_left_value(left)
@@ -348,22 +359,16 @@ pub fn TypeCheck::check_left_value(self : Self, left_value : LeftValue) -> Type 
       }
       let struct_def = self.prog.structs
         .get(struct_ty)
-        .or_else(
-          () =>{
-            println("Error: Struct \{struct_ty} not found in program")
-            panic()
-          },
-        )
+        .or_else(() => {
+          println("Error: Struct \{struct_ty} not found in program")
+          panic()
+        })
       let ty = struct_def
         .get_field_type(field_name)
-        .or_else(
-          () => {
-            println(
-              "Error: Field \{field_name} not found in struct \{struct_ty}",
-            )
-            panic()
-          },
-        )
+        .or_else(() => {
+          println("Error: Field \{field_name} not found in struct \{struct_ty}")
+          panic()
+        })
       struct_access.ty = Some(ty)
       ty
     }
@@ -385,14 +390,22 @@ pub fn TypeCheck::check_apply(self : Self, apply_expr : ApplyExpr) -> Type {
         println("ArrayGet Index Type Mismatch: Expected Int, got \{index_ty}")
         panic()
       }
-      guard left_ty is Array(arr_ty) else {
-        println(
-          "ArrayGet Left Value Type Mismatch: Expected ArrayType, got \{left_ty}",
-        )
-        panic()
+      match left_ty {
+        Array(ele_ty) => {
+          array_get.ty = Some(ele_ty)
+          ele_ty
+        }
+        Ptr(ele_ty) => {
+          array_get.ty = Some(ele_ty)
+          ele_ty
+        }
+        _ => {
+          println(
+            "ArrayGet Left Value Type Mismatch: Expected ArrayType or Pointer, got \{left_ty}",
+          )
+          panic()
+        }
       }
-      array_get.ty = Some(arr_ty)
-      arr_ty
     }
     StructAccess(left, field_name, ..) as struct_access => {
       let left_ty = self.check_apply(left)
@@ -404,22 +417,16 @@ pub fn TypeCheck::check_apply(self : Self, apply_expr : ApplyExpr) -> Type {
       }
       let struct_def = self.prog.structs
         .get(struct_ty)
-        .or_else(
-          () => {
-            println("Error: Struct \{struct_ty} not found in program")
-            panic()
-          },
-        )
+        .or_else(() => {
+          println("Error: Struct \{struct_ty} not found in program")
+          panic()
+        })
       let ty = struct_def
         .get_field_type(field_name)
-        .or_else(
-          () => {
-            println(
-              "Error: Field \{field_name} not found in struct \{struct_ty}",
-            )
-            panic()
-          }
-        )
+        .or_else(() => {
+          println("Error: Field \{field_name} not found in struct \{struct_ty}")
+          panic()
+        })
       struct_access.ty = Some(ty)
       ty
     }
@@ -456,12 +463,10 @@ pub fn TypeCheck::check_atom_expr(self : Self, atom_expr : AtomExpr) -> Type {
       let exprs_tys = exprs.map(self.check_expr(_))
       let last = exprs_tys
         .last()
-        .or_else(
-          () => {
-            println("Error: Empty array in AtomExpr")
-            panic()
-          },
-        )
+        .or_else(() => {
+          println("Error: Empty array in AtomExpr")
+          panic()
+        })
       guard exprs_tys.iter().all(ty => ty == last) else {
         println("Error: Array element types do not match: \{exprs_tys}")
         panic()
@@ -485,13 +490,14 @@ pub fn TypeCheck::check_atom_expr(self : Self, atom_expr : AtomExpr) -> Type {
       //  )
       let func = match self.prog.functions.get(func_name) {
         Some(f) => f
-        None => match self.prog.externs.get(func_name) {
-          Some(f) => f
-          None => {
-            println("Error: Function \{func_name} not found in program")
-            panic()
+        None =>
+          match self.prog.externs.get(func_name) {
+            Some(f) => f
+            None => {
+              println("Error: Function \{func_name} not found in program")
+              panic()
+            }
           }
-        }
       }
       let args_tys = args.map(self.check_expr(_))
       let param_tys = func.params.map(param => param.1)

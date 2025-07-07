@@ -34,10 +34,13 @@ pub enum Token {
 } derive(Show, Eq)
 
 ///|
-pub fn lex(code: String) -> Array[Token] {
+pub fn lex(code : String) -> Array[Token] {
   let tokens = Array::new()
   loop code[:] {
-    [] => { tokens.push(EOF); break tokens; }
+    [] => {
+      tokens.push(EOF)
+      break tokens
+    }
     [';', .. rest] => {
       tokens.push(Token::Terminator)
       continue rest
@@ -164,12 +167,12 @@ pub fn lex(code: String) -> Array[Token] {
       continue rest_str
     }
     ['a'..='z', ..] as code => {
-      let (tok, rest)  = lex_lower_ident(code)
+      let (tok, rest) = lex_lower_ident(code)
       tokens.push(tok)
       continue rest
     }
     ['0'..='9', ..] as code => {
-      let (tok, rest)  = lex_number(code)
+      let (tok, rest) = lex_number(code)
       tokens.push(tok)
       continue rest
     }
@@ -180,7 +183,8 @@ pub fn lex(code: String) -> Array[Token] {
   }
 }
 
-pub fn lex_lower_ident(rest: @string.View) -> (Token, @string.View) {
+///|
+pub fn lex_lower_ident(rest : @string.View) -> (Token, @string.View) {
   let ident = Array::new()
   let rest_str = loop rest {
     ['a'..='z' | 'A'..='Z' | '0'..='9' | '_' as c, .. rest_str] => {
@@ -206,11 +210,11 @@ pub fn lex_lower_ident(rest: @string.View) -> (Token, @string.View) {
     "false" => Token::Bool(false)
     _ => Token::Lower(ident)
   }
-
   (tok, rest_str)
 }
 
-pub fn lex_number(rest: @string.View) -> (Token, @string.View) {
+///|
+pub fn lex_number(rest : @string.View) -> (Token, @string.View) {
   let mut has_dot = false
   let num_chars = Array::new()
   loop rest {
