@@ -3,14 +3,14 @@ pub suberror CodeGenError String derive(Show)
 
 ///|
 pub struct CodeGen {
-  parser_prog : @parser.Program
+  parser_prog : Program
   llvm_ctx : @IR.LLVMContext
   llvm_prog : @IR.Program
   builder : @IR.IRBuilder
 }
 
 ///|
-pub fn CodeGen::init(parser_prog : @parser.Program) -> CodeGen {
+pub fn CodeGen::init(parser_prog : Program) -> CodeGen {
   let llvm_ctx = @IR.LLVMContext::new()
   let llvm_prog = @IR.Program::new("tinymoonbit", llvm_ctx)
   let builder = @IR.IRBuilder::new()
@@ -23,16 +23,13 @@ pub fn CodeGen::dump(self : Self) -> Unit {
 }
 
 ///|
-traitalias @IR.Type
-
-///|
 fn CodeGen::convert_parser_type_to_llvm_type(
   self : Self,
-  ty : @parser.Type
-) -> &Type raise {
+  ty : Type
+) -> &@IR.Type raise {
   let ctx = self.llvm_ctx
   match ty {
-    Unit => ctx.getVoidTy() as &Type
+    Unit => ctx.getVoidTy() as &@IR.Type
     Bool => ctx.getInt1Ty()
     Int | UInt => ctx.getInt32Ty()
     Int64 | UInt64 => ctx.getInt64Ty()
@@ -56,21 +53,18 @@ fn CodeGen::getFunction(self : Self, name : String) -> @IR.Function? {
 }
 
 ///|
-traitalias @IR.Value
-
-///|
 priv struct Env {
   gen : CodeGen
-  parser_func : @parser.Function
+  parser_func : Function
   llvm_func : @IR.Function
   parent : Env?
-  symbols : Map[String, &Value]
+  symbols : Map[String, &@IR.Value]
 }
 
 ///|
 fn Env::new(
   gen : CodeGen,
-  parser_func : @parser.Function,
+  parser_func : Function,
   llvm_func : @IR.Function
 ) -> Env {
   Env::{ gen, parser_func, llvm_func, parent: None, symbols: Map::new() }
@@ -88,7 +82,7 @@ fn Env::subenv(self : Self) -> Env {
 }
 
 ///|
-fn Env::get_symbol(self : Self, name : String) -> &Value? {
+fn Env::get_symbol(self : Self, name : String) -> &@IR.Value? {
   match self.symbols.get(name) {
     Some(value) => Some(value)
     None =>
@@ -131,7 +125,7 @@ pub fn CodeGen::emitProg(self : Self) -> Unit raise Error {
 ///|
 fn CodeGen::emitStructDef(
   self : Self,
-  struct_def : @parser.StructDef
+  struct_def : StructDef
 ) -> Unit raise Error {
   // 将结构体字段类型转换为LLVM类型
   let field_types = struct_def.fields.map(field => {
@@ -147,7 +141,7 @@ fn CodeGen::emitStructDef(
 ///|
 fn CodeGen::genFuncVal(
   self : Self,
-  func : @parser.Function
+  func : Function
 ) -> @IR.Function raise Error {
   let param_tys = func.params.map(param_ty => {
     let (_, ty) = param_ty
@@ -177,7 +171,7 @@ fn Env::emitFunc(self : Self) -> Unit raise {
 }
 
 ///|
-fn Env::emitStmt(self : Self, stmt : @parser.Stmt) -> Unit raise Error {
+fn Env::emitStmt(self : Self, stmt : Stmt) -> Unit raise Error {
   match stmt {
     Let(name, ty, None) => {
       let data_ty = self.gen.convert_parser_type_to_llvm_type(ty)
@@ -259,8 +253,8 @@ fn Env::emitStmt(self : Self, stmt : @parser.Stmt) -> Unit raise Error {
 ///|
 fn Env::emitLeftValue(
   self : Self,
-  left_val : @parser.LeftValue
-) -> &Value raise {
+  left_val : LeftValue
+) -> &@IR.Value raise {
   match left_val {
     Var(name, ..) => {
       let addr = match self
@@ -320,7 +314,7 @@ fn Env::emitLeftValue(
       let field_idx = self.gen.llvm_ctx.getConstInt32(field_index)
       let field_ptr = self.gen.builder.createGEP(
         struct_ptr,
-        llvm_struct_type as &Type,
+        llvm_struct_type as &@IR.Type,
         [zero, field_idx],
       )
       field_ptr
@@ -332,7 +326,7 @@ fn Env::emitLeftValue(
 }
 
 ///|
-fn Env::emitExpr(self : Self, expr : @parser.Expr) -> &Value raise {
+fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
   match expr {
     Apply(apply_expr, ..) => self.emitApplyExpr(apply_expr)
     Neg(expr, ty=Some(Int | Int64 as ty)) => {
@@ -543,8 +537,8 @@ fn Env::emitExpr(self : Self, expr : @parser.Expr) -> &Value raise {
 ///|
 fn Env::emitApplyExpr(
   self : Self,
-  apply_expr : @parser.ApplyExpr
-) -> &Value raise {
+  apply_expr : ApplyExpr
+) -> &@IR.Value raise {
   match apply_expr {
     Atom(atom_expr, ..) => self.emitAtomExpr(atom_expr)
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
@@ -600,7 +594,7 @@ fn Env::emitApplyExpr(
       let field_idx = self.gen.llvm_ctx.getConstInt32(field_index)
       let field_ptr = self.gen.builder.createGEP(
         struct_ptr,
-        llvm_struct_type as &Type,
+        llvm_struct_type as &@IR.Type,
         [zero, field_idx],
       )
 
@@ -662,11 +656,11 @@ fn Env::emitApplyExpr(
 }
 
 ///|
-fn Env::emitAtomExpr(self : Self, atomExpr : @parser.AtomExpr) -> &Value raise {
+fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
   let ctx = self.gen.llvm_ctx
   match atomExpr {
     Bool(true) => {
-      ctx.getConstTrue() as &Value
+      ctx.getConstTrue() as &@IR.Value
     }
     Bool(false) => ctx.getConstFalse()
     Int(v) => ctx.getConstInt32(v)
@@ -718,7 +712,7 @@ fn Env::emitAtomExpr(self : Self, atomExpr : @parser.AtomExpr) -> &Value raise {
         None => raise CodeGenError("Function not found: \{func_name}")
       }
       let args_vals = args.map(arg => self.emitExpr(arg))
-      self.gen.builder.createCall(llvm_func, args_vals) as &Value
+      self.gen.builder.createCall(llvm_func, args_vals) as &@IR.Value
     }
     _ =>
       raise CodeGenError("Error: Unsupported atom expression: \{atomExpr}")

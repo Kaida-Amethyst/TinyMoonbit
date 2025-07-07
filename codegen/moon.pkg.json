@@ -1,6 +1,0 @@
-{
-  "import": [
-    "Kaida-Amethyst/TinyMoonbit/parser",
-    "Kaida-Amethyst/Aether/IR"
-  ]
-}

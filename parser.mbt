@@ -1,9 +1,3 @@
-///|
-typealias @lexer.Token
-
-///|
-fnalias @lexer.lex
-
 pub suberror ParserError String derive(Show)
 
 ///|
