@@ -2,11 +2,7 @@
 fnalias @lexer.lex
 
 ///|
-typealias @parser.Function
-
-///|
-fn testcode1() -> Unit {
-  let code =
+let code1 : String = 
     #| extern fn print_int(x : Int) -> Unit;
     #|
     #| fn fib(n : Int) -> Int {
@@ -19,19 +15,9 @@ fn testcode1() -> Unit {
     #| fn main {
     #|   print_int(fib(10));
     #| }
-  let prog = @parser.Program::parse(lex(code))
-  let _ = @parser.TypeCheck::check_prog(prog)
-  let codegen = @codegen.CodeGen::init(prog)
-  match (try? codegen.emitProg()) {
-    Ok(_) => ()
-    Err(e) => println("Error during code generation: \{e}")
-  }
-  codegen.dump()
-}
 
 ///|
-fn testcode2() -> Unit {
-  let code =
+let code2 : String = 
     #|extern fn print_int(x: Int) -> Unit;
     #|
     #|fn caltz(n: Int, cnt: Int) -> Int {
@@ -48,19 +34,9 @@ fn testcode2() -> Unit {
     #|  let n : Int = caltz(23, 0);
     #|  print_int(n);
     #|}
-  let prog = @parser.Program::parse(lex(code))
-  let _ = @parser.TypeCheck::check_prog(prog)
-  let codegen = @codegen.CodeGen::init(prog)
-  match (try? codegen.emitProg()) {
-    Ok(_) => ()
-    Err(e) => println("Error during code generation: \{e}")
-  }
-  codegen.dump()
-}
 
 ///|
-fn testcode3() -> Unit {
-  let code =
+let code3 : String =
     #|extern fn malloc(size: Int) -> Ptr[Unit];
     #|extern fn print_int(x: Int) -> Unit;
     #|extern fn print_endline() -> Unit;
@@ -86,6 +62,8 @@ fn testcode3() -> Unit {
     #|    print_endline();
     #|  }
     #|}
+
+fn test_code(code: String) -> Unit raise {
   let prog = @parser.Program::parse(lex(code))
   let _ = @parser.TypeCheck::check_prog(prog)
   let codegen = @codegen.CodeGen::init(prog)
@@ -98,12 +76,15 @@ fn testcode3() -> Unit {
 
 ///|
 fn main {
-  testcode3()
+  match (try? test_code(code3)) {
+    Ok(_) => ()
+    Err(e) => println("Error during test execution: \{e}")
+  }
 }
 
 ///|
 test {
-  ignore(testcode1)
-  ignore(testcode2)
-  ignore(testcode3)
+  ignore(code1)
+  ignore(code2)
+  ignore(code3)
 }
