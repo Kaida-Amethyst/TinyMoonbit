@@ -1,5 +1,5 @@
+///|
 pub suberror CodeGenError String derive(Show)
-
 
 ///|
 pub struct CodeGen {
@@ -29,7 +29,9 @@ fn CodeGen::convert_parser_type_to_llvm_type(
 ) -> &@IR.Type raise {
   let ctx = self.llvm_ctx
   match ty {
-    Unit => ctx.getVoidTy() as &@IR.Type
+    Unit => {
+      ctx.getVoidTy() as &@IR.Type
+    }
     Bool => ctx.getInt1Ty()
     Int | UInt => ctx.getInt32Ty()
     Int64 | UInt64 => ctx.getInt64Ty()
@@ -37,10 +39,11 @@ fn CodeGen::convert_parser_type_to_llvm_type(
     Double => ctx.getDoubleTy()
     Ptr(_) => ctx.getPtrTy()
     Array(_) => ctx.getPtrTy()
-    Struct(sname) => match ctx.getStructTypeByName(sname) {
+    Struct(sname) =>
+      match ctx.getStructTypeByName(sname) {
         Some(struct_ty) => struct_ty
-        None =>raise CodeGenError("Struct \{sname} not found in LLVM context")
-    }
+        None => raise CodeGenError("Struct \{sname} not found in LLVM context")
+      }
   }
 }
 
@@ -251,21 +254,16 @@ fn Env::emitStmt(self : Self, stmt : Stmt) -> Unit raise Error {
 }
 
 ///|
-fn Env::emitLeftValue(
-  self : Self,
-  left_val : LeftValue
-) -> &@IR.Value raise {
+fn Env::emitLeftValue(self : Self, left_val : LeftValue) -> &@IR.Value raise {
   match left_val {
     Var(name, ..) => {
-      let addr = match self
-        .get_symbol(name) {
+      let addr = match self.get_symbol(name) {
         Some(addr) => addr
-        None => 
-          raise CodeGenError("Error: Variable not found: \{name}")
+        None => raise CodeGenError("Error: Variable not found: \{name}")
       }
-        //.or_else(() => {
-        //  raise CodeGenError("Error: Variable not found: \{name}")
-        //})
+      //.or_else(() => {
+      //  raise CodeGenError("Error: Variable not found: \{name}")
+      //})
       addr
     }
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
@@ -285,28 +283,35 @@ fn Env::emitLeftValue(
         Var(_, ty=Some(Struct(sname))) => sname
         StructAccess(_, _, ty=Some(Struct(sname))) => sname
         ArrayGet(_, _, ty=Some(Struct(sname))) => sname
-        _ => {
-          raise CodeGenError("Error: Cannot determine struct type for field access")
-        }
+        _ =>
+          raise CodeGenError(
+            "Error: Cannot determine struct type for field access",
+          )
       }
-      let struct_def = match self.gen.parser_prog.structs
-        .get(struct_type_name) {
+      let struct_def = match
+        self.gen.parser_prog.structs.get(struct_type_name) {
         Some(def) => def
-        None => raise CodeGenError("Error: Struct definition not found: \{struct_type_name}")
+        None =>
+          raise CodeGenError(
+            "Error: Struct definition not found: \{struct_type_name}",
+          )
       }
-      let field_index = match struct_def
-        .get_field_index(field_name) {
+      let field_index = match struct_def.get_field_index(field_name) {
         Some(index) => index
-        None => raise CodeGenError(
-          "Error: Field \{field_name} not found in struct \{struct_type_name}",
-        )
+        None =>
+          raise CodeGenError(
+            "Error: Field \{field_name} not found in struct \{struct_type_name}",
+          )
       }
 
       // 获取LLVM结构体类型
-      let llvm_struct_type = match self.gen.llvm_ctx
-        .getStructTypeByName(struct_type_name) {
+      let llvm_struct_type = match
+        self.gen.llvm_ctx.getStructTypeByName(struct_type_name) {
         Some(struct_ty) => struct_ty
-        None => raise CodeGenError("Error: LLVM struct type not found: \{struct_type_name}")
+        None =>
+          raise CodeGenError(
+            "Error: LLVM struct type not found: \{struct_type_name}",
+          )
       }
 
       // 创建GEP指令：第一个索引0是解引用指针，第二个索引是字段索引
@@ -319,9 +324,7 @@ fn Env::emitLeftValue(
       )
       field_ptr
     }
-    _ => {
-      raise CodeGenError("Error: Unsupported left value: \{left_val}")
-    }
+    _ => raise CodeGenError("Error: Unsupported left value: \{left_val}")
   }
 }
 
@@ -347,9 +350,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       // should be FNeg
       self.gen.builder.createFSub(zero, value)
     }
-    Neg(_, ..) => {
-      raise CodeGenError("Error: Unsupported negation type")
-    }
+    Neg(_, ..) => raise CodeGenError("Error: Unsupported negation type")
     Add(lhs, rhs, ty=Some(Int | Int64 | UInt | UInt64)) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -360,9 +361,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createFAdd(lhs_val, rhs_val)
     }
-    Add(_, ..) => {
-      raise CodeGenError("Error: Unsupported addition type")
-    }
+    Add(_, ..) => raise CodeGenError("Error: Unsupported addition type")
     Sub(lhs, rhs, ty=Some(Int | Int64 | UInt | UInt64)) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -373,9 +372,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createFSub(lhs_val, rhs_val)
     }
-    Sub(_, ..) => {
-      raise CodeGenError("Error: Unsupported subtraction type")
-    }
+    Sub(_, ..) => raise CodeGenError("Error: Unsupported subtraction type")
     Mul(lhs, rhs, ty=Some(Int | Int64 | UInt | UInt64)) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -386,9 +383,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createFMul(lhs_val, rhs_val)
     }
-    Mul(_, ..) => {
-      raise CodeGenError("Error: Unsupported multiplication type")
-    }
+    Mul(_, ..) => raise CodeGenError("Error: Unsupported multiplication type")
     Div(lhs, rhs, ty=Some(Int | Int64)) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -404,9 +399,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createFDiv(lhs_val, rhs_val)
     }
-    Div(_, ..) => {
-      raise CodeGenError("Error: Unsupported division type")
-    }
+    Div(_, ..) => raise CodeGenError("Error: Unsupported division type")
     Rem(lhs, rhs, ty=Some(Int | Int64)) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -422,9 +415,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createFRem(lhs_val, rhs_val)
     }
-    Rem(_, ..) => {
-      raise CodeGenError("Error: Unsupported remainder type")
-    }
+    Rem(_, ..) => raise CodeGenError("Error: Unsupported remainder type")
     Eq(lhs, rhs) => {
       let lhs_val = self.emitExpr(lhs)
       let rhs_val = self.emitExpr(rhs)
@@ -433,9 +424,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpEQ(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpOEQ(lhs_val, rhs_val)
-        _ => {
-          raise CodeGenError("Error: Unsupported type for equality")
-        }
+        _ => raise CodeGenError("Error: Unsupported type for equality")
       }
     }
     Ne(lhs, rhs) => {
@@ -446,9 +435,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpNE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpONE(lhs_val, rhs_val)
-        _ => {
-          raise CodeGenError("Error: Unsupported type for inequality")
-        }
+        _ => raise CodeGenError("Error: Unsupported type for inequality")
       }
     }
     Lt(lhs, rhs) => {
@@ -459,9 +446,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpSLT(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpOLT(lhs_val, rhs_val)
-        _ => {
-          raise CodeGenError("Error: Unsupported type for less than")
-        }
+        _ => raise CodeGenError("Error: Unsupported type for less than")
       }
     }
     Le(lhs, rhs) => {
@@ -472,9 +457,8 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpSLE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpOLE(lhs_val, rhs_val)
-        _ => {
+        _ =>
           raise CodeGenError("Error: Unsupported type for less than or equal")
-        }
       }
     }
     Gt(lhs, rhs) => {
@@ -485,9 +469,7 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpSGT(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpOGT(lhs_val, rhs_val)
-        _ => {
-          raise CodeGenError("Error: Unsupported type for greater than")
-        }
+        _ => raise CodeGenError("Error: Unsupported type for greater than")
       }
     }
     Ge(lhs, rhs) => {
@@ -498,9 +480,10 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
           self.gen.builder.createICmpSGE(lhs_val, rhs_val)
         FloatType(_) | DoubleType(_) =>
           self.gen.builder.createFCmpOGE(lhs_val, rhs_val)
-        _ => {
-          raise CodeGenError("Error: Unsupported type for greater than or equal")
-        }
+        _ =>
+          raise CodeGenError(
+            "Error: Unsupported type for greater than or equal",
+          )
       }
     }
     And(lhs, rhs) => {
@@ -528,17 +511,12 @@ fn Env::emitExpr(self : Self, expr : Expr) -> &@IR.Value raise {
       let rhs_val = self.emitExpr(rhs)
       self.gen.builder.createAShr(lhs_val, rhs_val)
     }
-    Shr(_, ..) => {
-      raise CodeGenError("Error: Unsupported shift right type")
-    }
+    Shr(_, ..) => raise CodeGenError("Error: Unsupported shift right type")
   }
 }
 
 ///|
-fn Env::emitApplyExpr(
-  self : Self,
-  apply_expr : ApplyExpr
-) -> &@IR.Value raise {
+fn Env::emitApplyExpr(self : Self, apply_expr : ApplyExpr) -> &@IR.Value raise {
   match apply_expr {
     Atom(atom_expr, ..) => self.emitAtomExpr(atom_expr)
     ArrayGet(array_val, index_expr, ty=Some(ele_ty)) => {
@@ -558,35 +536,42 @@ fn Env::emitApplyExpr(
         Atom(Var(_, ty=Some(Struct(sname))), ..) => sname
         StructAccess(_, _, ty=Some(Struct(sname))) => sname
         ArrayGet(_, _, ty=Some(Struct(sname))) => sname
-        _ => {
-          raise CodeGenError("Error: Cannot determine struct type for field access")
-        }
+        _ =>
+          raise CodeGenError(
+            "Error: Cannot determine struct type for field access",
+          )
       }
-      let struct_def = match self.gen.parser_prog.structs.get(struct_type_name) {
+      let struct_def = match
+        self.gen.parser_prog.structs.get(struct_type_name) {
         Some(def) => def
-        None => 
-          raise CodeGenError("Error: Struct definition not found: \{struct_type_name}")
+        None =>
+          raise CodeGenError(
+            "Error: Struct definition not found: \{struct_type_name}",
+          )
       }
       let field_index = match struct_def.get_field_index(field_name) {
         Some(index) => index
-        None => 
+        None =>
           raise CodeGenError(
             "Error: Field \{field_name} not found in struct \{struct_type_name}",
           )
       }
       let field_type = match struct_def.get_field_type(field_name) {
         Some(ty) => ty
-        None => 
+        None =>
           raise CodeGenError(
             "Error: Field type not found for \{field_name} in struct \{struct_type_name}",
           )
       }
 
       // 获取LLVM结构体类型
-      let llvm_struct_type = match self.gen.llvm_ctx.getStructTypeByName(struct_type_name) {
+      let llvm_struct_type = match
+        self.gen.llvm_ctx.getStructTypeByName(struct_type_name) {
         Some(struct_ty) => struct_ty
-        None => 
-          raise CodeGenError("Error: LLVM struct type not found: \{struct_type_name}")
+        None =>
+          raise CodeGenError(
+            "Error: LLVM struct type not found: \{struct_type_name}",
+          )
       }
 
       // 创建GEP指令获取字段指针
@@ -642,16 +627,14 @@ fn Env::emitApplyExpr(
 
         // Same type
         (from_ty, to_ty) if from_ty == to_ty => value
-        _ => {
+        _ =>
           raise CodeGenError(
             "Error: Unsupported cast from \{value.getType()} to \{target_ty}",
           )
-        }
       }
     }
-    _ => {
+    _ =>
       raise CodeGenError("Error: Unsupported apply expression: \{apply_expr}")
-    }
   }
 }
 
@@ -677,7 +660,7 @@ fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
       let ty = self.gen.convert_parser_type_to_llvm_type(ty)
       self.gen.builder.createLoad(ty, addr)
     }
- // type must be a pointer type
+    // type must be a pointer type
     Ref(name, ..) =>
       match self.symbols.get(name) {
         Some(addr) => addr
@@ -689,8 +672,7 @@ fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
         .getScalarSizeInBits()
       self.gen.llvm_ctx.getConstInt32(v.reinterpret_as_int())
     }
-    ExprSizeof(_) => 
-      raise CodeGenError("ExprSizeof not implemented yet")
+    ExprSizeof(_) => raise CodeGenError("ExprSizeof not implemented yet")
     Array(exprs, ty=Some(Array(ele_ty))) => {
       let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty)
       let array_size = exprs.length().reinterpret_as_uint()
@@ -714,7 +696,6 @@ fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
       let args_vals = args.map(arg => self.emitExpr(arg))
       self.gen.builder.createCall(llvm_func, args_vals) as &@IR.Value
     }
-    _ =>
-      raise CodeGenError("Error: Unsupported atom expression: \{atomExpr}")
+    _ => raise CodeGenError("Error: Unsupported atom expression: \{atomExpr}")
   }
 }

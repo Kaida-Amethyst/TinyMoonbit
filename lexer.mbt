@@ -1,5 +1,5 @@
+///|
 pub suberror LexerError String derive(Show)
-
 
 ///|
 pub(all) enum Keyword {
@@ -40,123 +40,42 @@ pub enum Token {
 pub fn lex(code : String) -> Array[Token] raise {
   let tokens = Array::new()
   loop code[:] {
-    [] => {
-      tokens.push(EOF)
-      break tokens
-    }
-    [';', .. rest] => {
-      tokens.push(Token::Terminator)
-      continue rest
-    }
-    [.. "::", .. rest] => {
-      tokens.push(Token::Symbol("::"))
-      continue rest
-    }
-    [':' | '.' | ',' as c, .. rest] => {
-      tokens.push(Token::Symbol(c.to_string()))
-      continue rest
-    }
+    [] => { tokens.push(EOF); break tokens }
+    [.. "//", .. rest] =>
+      continue loop rest {
+          ['\n' | '\r', .. rest_str] => break rest_str
+          [_, .. rest_str] => continue rest_str
+          [] as rest_str => break rest_str
+        }
+    [';', .. rest] => { tokens.push(Terminator); continue rest }
+    [.. "::", .. rest] => { tokens.push(Symbol("::")); continue rest }
+    [':' | '.' | ',' as c, .. rest] => { tokens.push(Symbol(c.to_string())); continue rest }
     [' ' | '\n' | '\r' | '\t', .. rest] => continue rest
-    ['+', .. rest] => {
-      tokens.push(Token::Operator("+".to_string()))
-      continue rest
-    }
-    [.. "->", .. rest] => {
-      tokens.push(Token::LeftArrow)
-      continue rest
-    }
-    ['-', .. rest] => {
-      tokens.push(Token::Operator("-".to_string()))
-      continue rest
-    }
-    ['*', .. rest] => {
-      tokens.push(Token::Operator("*".to_string()))
-      continue rest
-    }
-    ['/', .. rest] => {
-      tokens.push(Token::Operator("/"))
-      continue rest
-    }
-    ['%', .. rest] => {
-      tokens.push(Token::Operator("%"))
-      continue rest
-    }
-    [.. ">>", .. rest] => {
-      tokens.push(Token::Operator(">>".to_string()))
-      continue rest
-    }
-    [.. "<<", .. rest] => {
-      tokens.push(Token::Operator("<<".to_string()))
-      continue rest
-    }
-    [.. "==", .. rest] => {
-      tokens.push(Token::Operator("==".to_string()))
-      continue rest
-    }
-    [.. "!=", .. rest] => {
-      tokens.push(Token::Operator("!=".to_string()))
-      continue rest
-    }
-    [.. "<=", .. rest] => {
-      tokens.push(Token::Operator("<=".to_string()))
-      continue rest
-    }
-    [.. ">=", .. rest] => {
-      tokens.push(Token::Operator(">=".to_string()))
-      continue rest
-    }
-    [.. "&&", .. rest] => {
-      tokens.push(Token::Operator("&&".to_string()))
-      continue rest
-    }
-    [.. "&", .. rest] => {
-      tokens.push(Token::Operator("&".to_string()))
-      continue rest
-    }
-    [.. "||", .. rest] => {
-      tokens.push(Token::Operator("||".to_string()))
-      continue rest
-    }
-    [.. "|", .. rest] => {
-      tokens.push(Token::Operator("|".to_string()))
-      continue rest
-    }
-    ['<', .. rest] => {
-      tokens.push(Token::Operator("<".to_string()))
-      continue rest
-    }
-    ['>', .. rest] => {
-      tokens.push(Token::Operator(">".to_string()))
-      continue rest
-    }
-    ['=', .. rest] => {
-      tokens.push(Token::Operator("=".to_string()))
-      continue rest
-    }
-    ['(', .. rest] => {
-      tokens.push(Token::Bracket('('))
-      continue rest
-    }
-    [')', .. rest] => {
-      tokens.push(Token::Bracket(')'))
-      continue rest
-    }
-    ['[', .. rest] => {
-      tokens.push(Token::Bracket('['))
-      continue rest
-    }
-    [']', .. rest] => {
-      tokens.push(Token::Bracket(']'))
-      continue rest
-    }
-    ['{', .. rest] => {
-      tokens.push(Token::Bracket('{'))
-      continue rest
-    }
-    ['}', .. rest] => {
-      tokens.push(Token::Bracket('}'))
-      continue rest
-    }
+    ['+', .. rest] => { tokens.push(Operator("+")); continue rest }
+    [.. "->", .. rest] => { tokens.push(LeftArrow); continue rest }
+    ['-', .. rest] => { tokens.push(Operator("-")); continue rest }
+    ['*', .. rest] => { tokens.push(Operator("*")); continue rest }
+    ['/', .. rest] => { tokens.push(Operator("/")); continue rest }
+    ['%', .. rest] => { tokens.push(Operator("%")); continue rest }
+    [.. ">>", .. rest] => { tokens.push(Operator(">>")); continue rest }
+    [.. "<<", .. rest] => { tokens.push(Operator("<<")); continue rest }
+    [.. "==", .. rest] => { tokens.push(Operator("==")); continue rest }
+    [.. "!=", .. rest] => { tokens.push(Operator("!=")); continue rest }
+    [.. "<=", .. rest] => { tokens.push(Operator("<=")); continue rest }
+    [.. ">=", .. rest] => { tokens.push(Operator(">=")); continue rest }
+    [.. "&&", .. rest] => { tokens.push(Operator("&&")); continue rest }
+    [.. "&", .. rest] => { tokens.push(Operator("&")); continue rest }
+    [.. "||", .. rest] => { tokens.push(Operator("||")); continue rest }
+    [.. "|", .. rest] => { tokens.push(Operator("|")); continue rest }
+    ['<', .. rest] => { tokens.push(Operator("<")); continue rest }
+    ['>', .. rest] => { tokens.push(Operator(">")); continue rest }
+    ['=', .. rest] => { tokens.push(Operator("=")); continue rest }
+    ['(', .. rest] => { tokens.push(Bracket('(')); continue rest }
+    [')', .. rest] => { tokens.push(Bracket(')')); continue rest }
+    ['[', .. rest] => { tokens.push(Bracket('[')); continue rest }
+    [']', .. rest] => { tokens.push(Bracket(']')); continue rest }
+    ['{', .. rest] => { tokens.push(Bracket('{')); continue rest }
+    ['}', .. rest] => { tokens.push(Bracket('}')); continue rest }
     ['A'..='Z' as c, .. rest] => {
       let ident = [c]
       let rest_str = loop rest {
@@ -179,9 +98,7 @@ pub fn lex(code : String) -> Array[Token] raise {
       tokens.push(tok)
       continue rest
     }
-    other_strs => {
-      raise LexerError("Parse Error: Unexpected char: \{other_strs}")
-    }
+    other_strs => raise LexerError("Parse Error: Unexpected char: \{other_strs}")
   }
 }
 
@@ -233,9 +150,7 @@ pub fn lex_number(rest : @string.View) -> (Token, @string.View) raise {
       let num_str = String::from_array(num_chars)
       let num = match (try? @strconv.parse_int64(num_str)) {
         Ok(n) => n
-        Err(_) => {
-          raise LexerError("Parse Int64 failed: \{num_str}")
-        }
+        Err(_) => raise LexerError("Parse Int64 failed: \{num_str}")
       }
       break (Token::Int64(num), rest_str)
     }
@@ -243,9 +158,7 @@ pub fn lex_number(rest : @string.View) -> (Token, @string.View) raise {
       let num_str = String::from_array(num_chars)
       let num = match (try? @strconv.parse_uint64(num_str)) {
         Ok(n) => n
-        Err(_) => {
-          raise LexerError("Parse UInt64 failed: \{num_str}")
-        }
+        Err(_) => raise LexerError("Parse UInt64 failed: \{num_str}")
       }
       break (Token::UInt64(num), rest_str)
     }
@@ -253,9 +166,7 @@ pub fn lex_number(rest : @string.View) -> (Token, @string.View) raise {
       let num_str = String::from_array(num_chars)
       let num = match (try? @strconv.parse_uint(num_str)) {
         Ok(n) => n
-        Err(_) => {
-          raise LexerError("Parse UInt failed: \{num_str}")
-        }
+        Err(_) => raise LexerError("Parse UInt failed: \{num_str}")
       }
       break (Token::UInt(num), rest_str)
     }
@@ -274,9 +185,7 @@ pub fn lex_number(rest : @string.View) -> (Token, @string.View) raise {
       let num_str = String::from_array(num_chars)
       let num = match (try? @strconv.parse_double(num_str)) {
         Ok(n) => n
-        Err(_) => {
-          raise LexerError("Parse Double failed: \{num_str}")
-        }
+        Err(_) => raise LexerError("Parse Double failed: \{num_str}")
       }
       break (Token::Double(num), rest)
     }
@@ -284,9 +193,7 @@ pub fn lex_number(rest : @string.View) -> (Token, @string.View) raise {
       let num_str = String::from_array(num_chars)
       let num = match (try? @strconv.parse_int(num_str)) {
         Ok(n) => n
-        Err(_) => {
-          raise LexerError("Parse Int failed: \{num_str}")
-        }
+        Err(_) => raise LexerError("Parse Int failed: \{num_str}")
       }
       break (Token::Int(num), rest)
     }

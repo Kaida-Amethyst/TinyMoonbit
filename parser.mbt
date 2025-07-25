@@ -1,3 +1,4 @@
+///|
 pub suberror ParserError String derive(Show)
 
 ///|
@@ -13,7 +14,7 @@ pub enum Type {
   Ptr(Type)
   Array(Type)
   Struct(String)
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn Type::parse(master : String, sub~ : String? = None) -> Type raise {
@@ -29,9 +30,7 @@ pub fn Type::parse(master : String, sub~ : String? = None) -> Type raise {
     ("Ptr", Some(sub)) => Ptr(Type::parse(sub))
     ("Array", Some(sub)) => Array(Type::parse(sub))
     (struct_name, None) => Struct(struct_name)
-    _ => {
-      raise ParserError("Unknown type name: \{master} with sub-type: \{sub}")
-    }
+    _ => raise ParserError("Unknown type name: \{master} with sub-type: \{sub}")
   }
 }
 
@@ -51,12 +50,12 @@ pub(all) enum AtomExpr {
   Array(Array[Expr], mut ty~ : Type?) // e.g. [1, 2, 3]
   Paren(Expr, mut ty~ : Type?) // e.g. (1 + 2)
   Call(String, Array[Expr], mut ty~ : Type?) // e.g. func(arg1, arg2)
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn AtomExpr::parse(
   tokens : ArrayView[Token]
-) -> (AtomExpr, ArrayView[Token]) raise{
+) -> (AtomExpr, ArrayView[Token]) raise {
   match tokens {
     [Bool(b), .. rest_toks] => (AtomExpr::Bool(b), rest_toks)
     [Int(i), .. rest_toks] => (Int(i), rest_toks)
@@ -77,7 +76,9 @@ pub fn AtomExpr::parse(
     [Keyword(SizeOf), Bracket('('), .. rest_toks] => {
       let (expr, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket(')'), .. rest_toks] else {
-        raise ParserError("Parse AtomExpr Error: Expected ')' after sizeof expression")
+        raise ParserError(
+          "Parse AtomExpr Error: Expected ')' after sizeof expression",
+        )
       }
       (ExprSizeof(expr), rest_toks)
     }
@@ -91,20 +92,20 @@ pub fn AtomExpr::parse(
           match rest_toks {
             [Symbol(","), .. rest_toks] => continue rest_toks // continue if there is a comma
             [Bracket(')'), .. rest_toks] => break rest_toks // break if we reach the end of the arguments
-            _ => {
+            _ =>
               raise ParserError(
                 "Parse AtomExpr Error: Unexpected token in function call: \{rest_toks}",
               )
-            }
           }
         }
       }
       (Call(func_name, args, ty=None), rest_toks)
     }
     [Lower(var_name), .. rest_toks] => (Var(var_name, ty=None), rest_toks)
-    [Bracket('['), Bracket(']'), ..] => {
-      raise ParserError("Parse AtomExpr Error: Empty array literal is not allowed")
-    }
+    [Bracket('['), Bracket(']'), ..] =>
+      raise ParserError(
+        "Parse AtomExpr Error: Empty array literal is not allowed",
+      )
     [Bracket('['), .. rest_toks] => {
       let elements : Array[Expr] = Array::new()
       let rest_toks = loop rest_toks {
@@ -115,11 +116,10 @@ pub fn AtomExpr::parse(
           match rest_toks {
             [Symbol(","), .. rest_toks] => continue rest_toks // continue if there is a comma
             [Bracket(']'), .. rest_toks] => break rest_toks // break if we reach the end of the array
-            _ => {
+            _ =>
               raise ParserError(
                 "Parse AtomExpr Error: Unexpected token in array literal: \{rest_toks}",
               )
-            }
           }
         }
       }
@@ -128,15 +128,16 @@ pub fn AtomExpr::parse(
     [Bracket('('), .. rest_toks] => {
       let (expr, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket(')'), .. rest_toks] else {
-        raise ParserError("Parse AtomExpr Error: Expected ')' after parenthesis")
+        raise ParserError(
+          "Parse AtomExpr Error: Expected ')' after parenthesis",
+        )
       }
       (Paren(expr, ty=None), rest_toks)
     }
-    _ => {
+    _ =>
       raise ParserError(
         "Parse AtomExpr Error: Unexpected token in atomic expression: \{tokens}",
       )
-    }
   }
 }
 
@@ -173,7 +174,7 @@ pub(all) enum ApplyExpr {
   ArrayGet(ApplyExpr, Expr, mut ty~ : Type?) // e.g. arr[i]
   StructAccess(ApplyExpr, String, mut ty~ : Type?) // e.g. struct.field
   Cast(ApplyExpr, Type) // e.g. 1 as Float
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn ApplyExpr::parse(
@@ -185,7 +186,9 @@ pub fn ApplyExpr::parse(
     [Bracket('['), .. rest_toks] => {
       let (index_expr, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket(']'), .. rest_toks] else {
-        raise ParserError("Parse ApplyExpr Error: Expected ']' after array index")
+        raise ParserError(
+          "Parse ApplyExpr Error: Expected ']' after array index",
+        )
       }
       apply_expr = ApplyExpr::ArrayGet(apply_expr, index_expr, ty=None)
       continue rest_toks
@@ -194,7 +197,14 @@ pub fn ApplyExpr::parse(
       apply_expr = ApplyExpr::StructAccess(apply_expr, field_name, ty=None)
       continue rest_toks
     }
-    [Keyword(As), Upper(type_name), Bracket('['), Upper(sub), Bracket(']'), .. rest_toks] => {
+    [
+      Keyword(As),
+      Upper(type_name),
+      Bracket('['),
+      Upper(sub),
+      Bracket(']'),
+      .. rest_toks,
+    ] => {
       let type_name = Type::parse(type_name, sub=Some(sub))
       apply_expr = ApplyExpr::Cast(apply_expr, type_name)
       continue rest_toks
@@ -245,7 +255,7 @@ pub(all) enum Expr {
   Or(Expr, Expr)
   Shl(Expr, Expr, mut ty~ : Type?) // e.g. 1 << 2
   Shr(Expr, Expr, mut ty~ : Type?) // e.g. 1 >> 2
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise {
@@ -253,7 +263,11 @@ pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise 
     let (expr, rest_tokens) = Expr::parse(rest_tokens)
     return (Expr::Neg(expr, ty=None), rest_tokens)
   }
-  fn construct_bin_expr(left : Expr, right : Expr, oper : String) -> Expr raise {
+  fn construct_bin_expr(
+    left : Expr,
+    right : Expr,
+    oper : String
+  ) -> Expr raise {
     match oper {
       "+" => Expr::Add(left, right, ty=None)
       "-" => Expr::Sub(left, right, ty=None)
@@ -270,9 +284,7 @@ pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise 
       "||" => Expr::Or(left, right)
       "<<" => Expr::Shl(left, right, ty=None) // left shift
       ">>" => Expr::Shr(left, right, ty=None) // logical right shift
-      _ => {
-        raise ParserError("Unknown operator: \{oper}")
-      }
+      _ => raise ParserError("Unknown operator: \{oper}")
     }
   }
 
@@ -284,9 +296,7 @@ pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise 
       "==" | "!=" | "<=" | ">=" | "<" | ">" => 6
       "&&" => 3
       "||" => 2
-      _ => {
-        raise ParserError("Unknown operator precedence for: \{op}")
-      }
+      _ => raise ParserError("Unknown operator precedence for: \{op}")
     }
   }
 
@@ -324,7 +334,9 @@ pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise 
         new_exprs.push(new_expr)
       }
       guard new_exprs.length() == 1 else {
-        raise ParserError("Parse Expression Error: Mismatched expression and operators")
+        raise ParserError(
+          "Parse Expression Error: Mismatched expression and operators",
+        )
       }
       exprs.push(new_exprs.pop().unwrap())
       let (next_apply, rest_toks) = ApplyExpr::parse(rest_toks)
@@ -342,7 +354,9 @@ pub fn Expr::parse(tokens : ArrayView[Token]) -> (Expr, ArrayView[Token]) raise 
         exprs.push(new_expr)
       }
       guard exprs.length() == 1 else {
-        raise ParserError("Parse Expression Error: Mismatched expression and operators")
+        raise ParserError(
+          "Parse Expression Error: Mismatched expression and operators",
+        )
       }
       (exprs[0], rest_toks)
     }
@@ -373,7 +387,7 @@ pub(all) enum LeftValue {
   Var(String, mut ty~ : Type?) // e.g. x
   ArrayGet(LeftValue, Expr, mut ty~ : Type?) // e.g. arr[i]
   StructAccess(LeftValue, String, mut ty~ : Type?) // e.g. struct.field
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn LeftValue::parse(
@@ -387,7 +401,9 @@ pub fn LeftValue::parse(
     [Bracket('['), .. rest_toks] => {
       let (index_expr, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket(']'), .. rest_toks] else {
-        raise ParserError("Parse LeftValue Error: Expected ']' after array index")
+        raise ParserError(
+          "Parse LeftValue Error: Expected ']' after array index",
+        )
       }
       left_value = LeftValue::ArrayGet(left_value, index_expr, ty=None)
       continue rest_toks
@@ -426,7 +442,7 @@ pub(all) enum Stmt {
   Return(Expr?) // e.g. return 1 or return
   Assign(LeftValue, Expr) // e.g. x = 1 or arr[i] = 2 or arr[i].field = 3
   Expr(Expr) // single expression statement, e.g. print_int(1);
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn Stmt::parse(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise {
@@ -442,14 +458,17 @@ pub fn Stmt::parse(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise 
         _ => Stmt::parse_expr(tokens)
       }
     }
-    _ => {
-      raise ParserError("Parse Statement Error: Unexpected token in statement: \{tokens}")
-    }
+    _ =>
+      raise ParserError(
+        "Parse Statement Error: Unexpected token in statement: \{tokens}",
+      )
   }
 }
 
 ///|
-pub fn Stmt::parse_let(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise {
+pub fn Stmt::parse_let(
+  tokens : ArrayView[Token]
+) -> (Stmt, ArrayView[Token]) raise {
   match tokens {
     // let x: Array[Int];
     [
@@ -482,7 +501,7 @@ pub fn Stmt::parse_let(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) ra
       let type_name = Type::parse(type_name, sub=Some(sub))
       let (expr, rest_toks) = Expr::parse(rest_toks)
       let stmt = Stmt::Let(var_name, type_name, Some(expr))
-      guard rest_toks is [Terminator, ..rest_toks] else {
+      guard rest_toks is [Terminator, .. rest_toks] else {
         raise ParserError(
           "Parse Let Statement Error: Expected ';' after array initialization",
         )
@@ -514,18 +533,17 @@ pub fn Stmt::parse_let(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) ra
       let type_name = Type::parse(type_name)
       let (expr, rest_toks) = Expr::parse(rest_toks)
       let stmt = Stmt::Let(var_name, type_name, Some(expr))
-      guard rest_toks is [Terminator, ..rest_toks] else {
+      guard rest_toks is [Terminator, .. rest_toks] else {
         raise ParserError(
           "Parse Let Statement Error: Expected ';' after array initialization",
         )
       }
       (stmt, rest_toks)
     }
-    _ => {
+    _ =>
       raise ParserError(
         "Parse Let Statement Error: Unexpected token in let statement: \{tokens}",
       )
-    }
   }
 }
 
@@ -556,7 +574,9 @@ pub fn Stmt::parse_assign(
 ) -> (Stmt, ArrayView[Token]) raise {
   let (left_value, rest_toks) = LeftValue::parse(tokens)
   guard rest_toks is [Operator("="), .. rest_toks] else {
-    raise ParserError("Parse Assign Statement Error: Expected '=' after left value")
+    raise ParserError(
+      "Parse Assign Statement Error: Expected '=' after left value",
+    )
   }
   let (expr, rest_toks) = Expr::parse(rest_toks)
   let stmt = Stmt::Assign(left_value, expr)
@@ -593,12 +613,16 @@ test "Stmt::parse_assign" {
 }
 
 ///|
-pub fn Stmt::parse_if(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise {
+pub fn Stmt::parse_if(
+  tokens : ArrayView[Token]
+) -> (Stmt, ArrayView[Token]) raise {
   match tokens {
     [Keyword(If), .. rest_toks] => {
       let (condition, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket('{'), .. rest_toks] else {
-        raise ParserError("Parse If Statement Error: Expected '}' after condition")
+        raise ParserError(
+          "Parse If Statement Error: Expected '}' after condition",
+        )
       }
       let then_body : Array[Stmt] = Array::new()
       let rest_toks = loop rest_toks {
@@ -630,11 +654,10 @@ pub fn Stmt::parse_if(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) rai
       let stmt = Stmt::If(condition, then_body, else_body)
       (stmt, rest_toks)
     }
-    _ => {
+    _ =>
       raise ParserError(
         "Parse If Statement Error: Unexpected token in if statement: \{tokens}",
       )
-    }
   }
 }
 
@@ -683,12 +706,16 @@ test "Stmt::parse if" {
 }
 
 ///|
-pub fn Stmt::parse_while(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise {
+pub fn Stmt::parse_while(
+  tokens : ArrayView[Token]
+) -> (Stmt, ArrayView[Token]) raise {
   match tokens {
     [Keyword(While), .. rest_toks] => {
       let (condition, rest_toks) = Expr::parse(rest_toks)
       guard rest_toks is [Bracket('{'), .. rest_toks] else {
-        raise ParserError("Parse While Statement Error: Expected '}' after condition")
+        raise ParserError(
+          "Parse While Statement Error: Expected '}' after condition",
+        )
       }
       let body : Array[Stmt] = Array::new()
       let rest_toks = loop rest_toks {
@@ -702,11 +729,10 @@ pub fn Stmt::parse_while(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) 
       let stmt = Stmt::While(condition, body)
       (stmt, rest_toks)
     }
-    _ => {
+    _ =>
       raise ParserError(
         "Parse While Statement Error: Unexpected token in while statement: \{tokens}",
       )
-    }
   }
 }
 
@@ -740,11 +766,10 @@ pub fn Stmt::parse_return(
       }
       (Stmt::Return(Some(expr)), rest_toks)
     }
-    _ => {
+    _ =>
       raise ParserError(
         "Parse Return Statement Error: Unexpected token in return statement: \{tokens}",
       )
-    }
   }
 }
 
@@ -760,10 +785,14 @@ test "Stmt::parse return" {
 }
 
 ///|
-pub fn Stmt::parse_expr(tokens : ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise {
+pub fn Stmt::parse_expr(
+  tokens : ArrayView[Token]
+) -> (Stmt, ArrayView[Token]) raise {
   let (expr, rest_toks) = Expr::parse(tokens)
   guard rest_toks is [Terminator, .. rest_toks] else {
-    raise ParserError("Parse Expression Statement Error: Expected ';' after expression")
+    raise ParserError(
+      "Parse Expression Statement Error: Expected ';' after expression",
+    )
   }
   (Stmt::Expr(expr), rest_toks)
 }
@@ -774,7 +803,7 @@ pub(all) struct Function {
   params : Array[(String, Type)]
   ret_ty : Type
   body : Array[Stmt]
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn Function::parse_extern(
@@ -782,7 +811,9 @@ pub fn Function::parse_extern(
 ) -> (Function, ArrayView[Token]) raise {
   guard tokens
     is [Keyword(Extern), Keyword(Fn), Lower(fname), Bracket('('), .. tokens] else {
-    raise ParserError("Parse Function Error: Not a valid extern function declaration")
+    raise ParserError(
+      "Parse Function Error: Not a valid extern function declaration",
+    )
   }
   // Extern function, just skip the body
   let params : Array[(String, Type)] = Array::new()
@@ -809,12 +840,16 @@ pub fn Function::parse_extern(
     [Symbol(","), .. rest_toks] => continue rest_toks
     // `) ->`, break 
     [Bracket(')'), LeftArrow, .. rest_toks] => break rest_toks
-    _ as tokens => {
-      raise ParserError("Parse Function Error: Unexpected token in parameters: \{tokens}")
-    }
+    _ as tokens =>
+      raise ParserError(
+        "Parse Function Error: Unexpected token in parameters: \{tokens}",
+      )
   }
-  // parse return type
-  let (ret_ty, tokens) = match tokens {
+  let (
+    ret_ty,
+    // parse return type
+    tokens,
+  ) = match tokens {
     [
       Upper(master),
       Bracket('['),
@@ -830,9 +865,7 @@ pub fn Function::parse_extern(
       let return_type = Type::parse(ret_ty)
       (return_type, rest_toks)
     }
-    _ => {
-      raise ParserError("Parse Function Error, during parsing return type")
-    }
+    _ => raise ParserError("Parse Function Error, during parsing return type")
   }
   let function = Function::{ name: fname, params, ret_ty, body: Array::new() }
   return (function, tokens)
@@ -868,15 +901,17 @@ pub fn Function::parse(
       [Symbol(","), .. rest_toks] => continue rest_toks
       // `) ->`, break 
       [Bracket(')'), LeftArrow, .. rest_toks] => break rest_toks
-      _ as tokens => {
+      _ as tokens =>
         raise ParserError(
           "Parse Function Error: Unexpected token in parameters: \{tokens}",
         )
-      }
     }
+    let (
+      ret_ty,
 
-    // parse return type
-    let (ret_ty, tokens) = match tokens {
+      // parse return type
+      tokens,
+    ) = match tokens {
       [
         Upper(master),
         Bracket('['),
@@ -892,9 +927,7 @@ pub fn Function::parse(
         let return_type = Type::parse(ret_ty)
         (return_type, rest_toks)
       }
-      _ => {
-        raise ParserError("Parse Function Error, during parsing return type")
-      }
+      _ => raise ParserError("Parse Function Error, during parsing return type")
     }
     (fname, params, ret_ty, tokens)
   } else if tokens is [Keyword(Fn), Lower("main"), Bracket('{'), .. tokens] {
@@ -943,7 +976,7 @@ test "Function::parse" {
 pub(all) struct StructDef {
   name : String
   fields : Array[(String, Type)]
-} derive(Show, Eq)
+} derive(Show, Eq, ToJson)
 
 ///|
 pub fn StructDef::parse(
@@ -974,11 +1007,10 @@ pub fn StructDef::parse(
     }
     [Symbol(","), .. rest_toks] => continue rest_toks
     [Bracket('}'), .. rest_toks] => break rest_toks
-    _ as tokens => {
+    _ as tokens =>
       raise ParserError(
         "Parse Struct Error: Unexpected token in struct fields: \{tokens}",
       )
-    }
   }
   let struct_def = StructDef::{ name, fields }
   (struct_def, tokens)
@@ -1024,15 +1056,13 @@ pub struct Program {
   functions : Map[String, Function]
   externs : Map[String, Function]
   structs : Map[String, StructDef]
-  //main_func : MainFunc?
-} derive(Show)
+} derive(Show, ToJson)
 
 ///|
 pub fn Program::parse(tokens : Array[Token]) -> Program raise {
   let functions = Map::new()
   let externs = Map::new()
   let structs = Map::new()
-  //let mut main_func = None
   loop tokens[:] {
     [EOF] => break
     [Keyword(Extern), ..] as toks => {
@@ -1048,7 +1078,9 @@ pub fn Program::parse(tokens : Array[Token]) -> Program raise {
     [Keyword(Fn), ..] as toks => {
       let (f, rest_toks) = Function::parse(toks)
       guard not(functions.contains(f.name)) else {
-        raise ParserError("Parse Program Error: Function \{f.name} already defined")
+        raise ParserError(
+          "Parse Program Error: Function \{f.name} already defined",
+        )
       }
       functions.set(f.name, f)
       continue rest_toks
@@ -1056,14 +1088,17 @@ pub fn Program::parse(tokens : Array[Token]) -> Program raise {
     [Keyword(Struct), ..] as toks => {
       let (s, rest_toks) = StructDef::parse(toks)
       guard not(structs.contains(s.name)) else {
-        raise ParserError("Parse Program Error: Struct \{s.name} already defined")
+        raise ParserError(
+          "Parse Program Error: Struct \{s.name} already defined",
+        )
       }
       structs.set(s.name, s)
       continue rest_toks
     }
-    _ => {
-      raise ParserError("Parse Program Error: Unexpected token in program: \{tokens}")
-    }
+    _ =>
+      raise ParserError(
+        "Parse Program Error: Unexpected token in program: \{tokens}",
+      )
   }
   Program::{ functions, externs, structs }
 }
