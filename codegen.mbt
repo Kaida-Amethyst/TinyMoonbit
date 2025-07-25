@@ -4,22 +4,17 @@ pub suberror CodeGenError String derive(Show)
 ///|
 pub struct CodeGen {
   parser_prog : Program
-  llvm_ctx : @IR.LLVMContext
-  llvm_prog : @IR.Program
+  llvm_ctx : @IR.Context
+  llvm_prog : @IR.Module
   builder : @IR.IRBuilder
 }
 
 ///|
 pub fn CodeGen::init(parser_prog : Program) -> CodeGen {
-  let llvm_ctx = @IR.LLVMContext::new()
-  let llvm_prog = @IR.Program::new("tinymoonbit", llvm_ctx)
-  let builder = @IR.IRBuilder::new()
+  let llvm_ctx = @IR.Context::new()
+  let llvm_prog = llvm_ctx.addModule("tinymoonbit")
+  let builder = llvm_ctx.createBuilder()
   CodeGen::{ parser_prog, llvm_ctx, llvm_prog, builder }
-}
-
-///|
-pub fn CodeGen::dump(self : Self) -> Unit {
-  self.llvm_prog.dump()
 }
 
 ///|
@@ -29,9 +24,7 @@ fn CodeGen::convert_parser_type_to_llvm_type(
 ) -> &@IR.Type raise {
   let ctx = self.llvm_ctx
   match ty {
-    Unit => {
-      ctx.getVoidTy() as &@IR.Type
-    }
+    Unit => ctx.getVoidTy() as &@IR.Type
     Bool => ctx.getInt1Ty()
     Int | UInt => ctx.getInt32Ty()
     Int64 | UInt64 => ctx.getInt64Ty()
@@ -52,6 +45,16 @@ fn CodeGen::getFunction(self : Self, name : String) -> @IR.Function? {
   match self.llvm_prog.functions.get(name) {
     Some(func) => Some(func)
     None => None
+  }
+}
+
+pub fn CodeGen::dump(self :Self) -> Unit {
+  println(";; ModuleID = '\{self.llvm_prog.programID}'")
+  println(";; source_filename = \"\{self.llvm_prog.programID}\"")
+  println("")
+  for f in self.llvm_prog.functions.values() {
+    println(f)
+    println("")
   }
 }
 
@@ -642,9 +645,7 @@ fn Env::emitApplyExpr(self : Self, apply_expr : ApplyExpr) -> &@IR.Value raise {
 fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
   let ctx = self.gen.llvm_ctx
   match atomExpr {
-    Bool(true) => {
-      ctx.getConstTrue() as &@IR.Value
-    }
+    Bool(true) => ctx.getConstTrue() as &@IR.Value
     Bool(false) => ctx.getConstFalse()
     Int(v) => ctx.getConstInt32(v)
     UInt(v) => ctx.getConstInt32(v.reinterpret_as_int())
@@ -667,16 +668,15 @@ fn Env::emitAtomExpr(self : Self, atomExpr : AtomExpr) -> &@IR.Value raise {
         None => raise CodeGenError("Reference not found: \{name}")
       }
     TypeSizeof(ty) => {
-      let v = self.gen
-        .convert_parser_type_to_llvm_type(ty)
-        .getScalarSizeInBits()
+      let ty = self.gen.convert_parser_type_to_llvm_type(ty)
+      let v = ty.getScalarSizeInBits() / 8
       self.gen.llvm_ctx.getConstInt32(v.reinterpret_as_int())
     }
     ExprSizeof(_) => raise CodeGenError("ExprSizeof not implemented yet")
     Array(exprs, ty=Some(Array(ele_ty))) => {
       let ele_ty = self.gen.convert_parser_type_to_llvm_type(ele_ty)
-      let array_size = exprs.length().reinterpret_as_uint()
-      let arr_ty = self.gen.llvm_ctx.getArrayType(ele_ty, array_size)
+      let array_size = exprs.length()
+      let arr_ty = self.gen.llvm_ctx.getArrayType(ele_ty, array_size.reinterpret_as_uint())
       let array_ptr = self.gen.builder.createAlloca(arr_ty)
       exprs.eachi((i, expr) => {
         let value = self.emitExpr(expr)

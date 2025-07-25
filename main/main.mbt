@@ -80,14 +80,14 @@ fn test_code(code : String) -> Unit raise {
 
 ///|
 fn main {
-  //match (try? test_code(code1)) {
-  //  Ok(_) => ()
-  //  Err(e) => println("Error during test execution: \{e}")
-  //}
-  let code = "fn add(x: Int, y: Int) -> Int { return x + y; }";
-  let prog = (try? Program::parse(lex(code))).unwrap()
-  let _ = (try? TypeCheck::check_prog(prog)).unwrap()
-  println(prog.to_json().stringify())
+  match (try? test_code(code1)) {
+    Ok(_) => ()
+    Err(e) => println("Error during test execution: \{e}")
+  }
+  //let code = "fn add(x: Int, y: Int) -> Int { return x + y; }";
+  //let prog = (try? Program::parse(lex(code))).unwrap()
+  //let _ = (try? TypeCheck::check_prog(prog)).unwrap()
+  //println(prog.to_json().stringify())
 }
 
 ///|
