@@ -19,9 +19,9 @@ pub(all) enum Keyword {
 
 ///|
 pub(all) enum BinaryOp {
-  Plus // +
-  Minus // -
-  Mult // *
+  Add // +
+  Sub // -
+  Mul // *
   Div // /
   Mod // %
   ShiftLeft // <<
@@ -48,8 +48,8 @@ fn BinaryOp::precedence(self : Self) -> Int {
     Eq | NE => 5
     LT | GT | LE | GE => 6
     ShiftLeft | ShiftRight => 7
-    Plus | Minus => 8
-    Mult | Div | Mod => 9
+    Add | Sub => 8
+    Mul | Div | Mod => 9
   }
 }
 
@@ -99,6 +99,7 @@ pub(all) enum TokenKind {
   SemiColon // ;
   RightArrow // ->
   FatRightArrow // =>
+  Wildcard // _
   EOF
 } derive(Show, Eq)
 
@@ -230,19 +231,19 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       continue rest
     }
     ['+', .. rest] => {
-      let tok = Token::new(BinaryOp(Plus), line, column)
+      let tok = Token::new(BinaryOp(Add), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['-', .. rest] => {
-      let tok = Token::new(BinaryOp(Minus), line, column)
+      let tok = Token::new(BinaryOp(Sub), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['*', .. rest] => {
-      let tok = Token::new(BinaryOp(Mult), line, column)
+      let tok = Token::new(BinaryOp(Mul), line, column)
       tokens.push(tok)
       column += 1
       continue rest
@@ -359,6 +360,12 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       let (tok, rest, len) = tokenize_string(code, line, column)
       column += len
       tokens.push(tok)
+      continue rest
+    }
+    ['_', .. rest] => {
+      let tok = Token::new(Wildcard, line, column)
+      tokens.push(tok)
+      column += 1
       continue rest
     }
     ['A'..='Z', ..] as code => {

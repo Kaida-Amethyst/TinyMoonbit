@@ -41,7 +41,12 @@
 ///   "let" "mut" ident TypeAnnote? "=" Expr ";"
 ///
 /// AssignStmt :=
-///   ident assign_op Expr ";"
+///   left_value assign_op Expr ";"
+///
+/// left_value :=
+///     ident
+///   | left_value "[" Expr "]" ;; Array Access
+///   | left_value "." ident ;; Field Access
 ///
 /// assign_op := "=" | "+=" | "-=" | "*="
 ///
@@ -50,6 +55,10 @@
 ///
 /// ForStmt :=
 ///  "for" for_init? ";" for_cond? ";" for_step? "{" Stmt* "}" 
+///
+/// for_init := (ident "=" Expr)*
+/// for_cond := Expr
+/// for_step := (ident assign_op Expr)*
 ///
 /// Expr :=
 ///     ApplyExpr
@@ -620,16 +629,34 @@ pub struct Expr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : Type?
+  ty : TypeKind?
   kind : ExprKind
 } derive(Show, Eq)
 
 ///|
+///
+/// Ast - Expr
+///
+/// ```mbt
+/// let code = "a + b * c"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (expr, _) = ctx.parse_expr(toks)
+/// assert_true(
+///   expr.kind is BinaryExpr(Add, e1, e2) &&
+///   e1.kind is ApplyExpr(_) &&
+///   e2.kind is BinaryExpr(Mul, e3, e4) &&
+///   e3.kind is ApplyExpr(_) &&
+///   e4.kind is ApplyExpr(_)
+/// )
+/// ```
 pub fn Context::parse_expr(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (Expr, ArrayView[Token]) raise ParseError {
-  guard tokens is [tok, .. tokens] else {
+  guard tokens is [tok, ..] else {
     println("Compiler ICE: Empty Token ArrayView")
     panic()
   }
@@ -721,6 +748,30 @@ pub fn Context::parse_expr(
 }
 
 ///|
+fn Context::parse_expr_list(self: Self, tokens: ArrayView[Token]) -> (Array[Expr], ArrayView[Token]) raise ParseError {
+  let exprs: Array[Expr] = Array::new()
+  let tokens = loop tokens {
+    [{ kind: Bracket(')'), .. }, ..] as tokens => break tokens
+    [{ kind: Comma, .. }, { kind: Bracket(')'), .. }, ..] as tokens => break tokens[1:]
+    [{ kind: Comma, .. }, ..tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+  }
+  (exprs, tokens)
+}
+
+///|
 pub enum ExprKind {
   ApplyExpr(ApplyExpr)
   BlockExpr(BlockExpr)
@@ -735,6 +786,7 @@ pub struct IfExpr {
   column : Int
   end_lineno : Int
   end_column : Int
+  ty: TypeKind?
   cond : Expr
   then_block : BlockExpr
   else_block : @either.Either[IfExpr, BlockExpr]?
@@ -769,6 +821,7 @@ pub fn Context::parse_if_expr(
   let if_expr = IfExpr::{
     lineno,
     column,
+    ty: None,
     end_lineno: else_block.map_or(then_block.end_lineno, eb => match eb {
       @either.Either::Left(ie) => ie.end_lineno
       @either.Either::Right(be) => be.end_lineno
@@ -790,6 +843,7 @@ pub struct BlockExpr {
   column : Int
   end_lineno : Int
   end_column : Int
+  ty: TypeKind?
   stmts : Array[Stmt]
   expr : Expr?
 } derive(Show, Eq)
@@ -822,6 +876,7 @@ pub fn Context::parse_block_expr(
     column,
     end_lineno,
     end_column,
+    ty: None,
     stmts,
     expr: None,
   }
@@ -829,12 +884,31 @@ pub fn Context::parse_block_expr(
 }
 
 ///|
+///
+/// Ast - Apply Expression
+///
+/// ```mbt
+/// let code = "arr[0].field.method(42, 3.14)"
+///
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (apply_expr, _) = ctx.parse_apply_expr(toks)
+/// assert_true(
+///   apply_expr.kind is Call(a3, _) &&
+///   a3.kind is FieldAccess(a2, "method") &&
+///   a2.kind is FieldAccess(a1, "field") &&
+///   a1.kind is ArrayAccess(a0, _) &&
+///   a0.kind is AtomExpr(_)
+/// )
+/// ```
 pub struct ApplyExpr {
   lineno : Int
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : Type?
+  ty : TypeKind?
   kind : ApplyExprKind
 } derive(Show, Eq)
 
@@ -842,6 +916,7 @@ pub struct ApplyExpr {
 pub enum ApplyExprKind {
   AtomExpr(AtomExpr)
   ArrayAccess(ApplyExpr, Expr)
+  FieldAccess(ApplyExpr, String)
   TupleAccess(ApplyExpr, Int)
   Call(ApplyExpr, Array[Expr])
 } derive(Show, Eq)
@@ -851,10 +926,96 @@ pub fn Context::parse_apply_expr(
   self : Context,
   tokens : ArrayView[Token],
 ) -> (ApplyExpr, ArrayView[Token]) raise ParseError {
-  ...
+  let (atom_expr, tokens) = self.parse_atom_expr(tokens)
+  let apply_expr = ApplyExpr::{
+    lineno: atom_expr.lineno,
+    column: atom_expr.column,
+    end_lineno: atom_expr.end_lineno,
+    end_column: atom_expr.end_column,
+    ty: atom_expr.ty,
+    kind: ApplyExprKind::AtomExpr(atom_expr),
+  }
+  if !(tokens is [{kind: Bracket('[') | Dot | Bracket('('), ..}, ..]) {
+    return (apply_expr, tokens)
+  }
+
+  let mut apply_expr = apply_expr
+
+  loop tokens {
+    [{ kind: Bracket('['), .. }, ..tokens] => {
+      let (index_expr, tokens) = self.parse_expr(tokens)
+      guard tokens is [{ kind: Bracket(']'), lineno, column }, ..tokens] else {
+        raise ParseError((tokens[0], "Expect ']'"))
+      }
+      apply_expr = ApplyExpr::{
+        lineno: apply_expr.lineno,
+        column: apply_expr.column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: None,
+        kind: ApplyExprKind::ArrayAccess(apply_expr, index_expr),
+      }
+      continue tokens
+    }
+    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, ..tokens] => {
+      apply_expr = ApplyExpr::{
+        lineno: apply_expr.lineno,
+        column: apply_expr.column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: None,
+        kind: ApplyExprKind::FieldAccess(apply_expr, field),
+      }
+      continue tokens
+    }
+    [{ kind: Dot, .. }, { kind: Int(idx), lineno, column }, ..tokens] => {
+      apply_expr = ApplyExpr::{
+        lineno: apply_expr.lineno,
+        column: apply_expr.column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: None,
+        kind: ApplyExprKind::TupleAccess(apply_expr, idx),
+      }
+      continue tokens
+    }
+    [{ kind: Bracket('('), .. }, ..tokens] => {
+      let (args, tokens) = self.parse_expr_list(tokens)
+      guard tokens is [{ kind: Bracket(')'), lineno, column }, ..tokens] else {
+        raise ParseError((tokens[0], "Expect ')'"))
+      }
+      apply_expr = ApplyExpr::{
+        lineno: apply_expr.lineno,
+        column: apply_expr.column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: None,
+        kind: ApplyExprKind::Call(apply_expr, args),
+      }
+      continue tokens
+    }
+    tokens => break (apply_expr, tokens)
+  }
 }
 
 ///|
+///
+/// Ast - Atom Expression
+///
+/// ```mbt
+/// let code = "42 3.14 true"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (a1, toks) = ctx.parse_atom_expr(toks)
+/// let (a2, toks) = ctx.parse_atom_expr(toks)
+/// let (a3, _) = ctx.parse_atom_expr(toks)
+///
+/// assert_true(a1.kind is Int(42))
+/// assert_true(a2.kind is Double(3.14))
+/// assert_true(a3.kind is Bool(true))
+/// ```
 pub struct AtomExpr {
   lineno : Int
   column : Int
@@ -1002,7 +1163,45 @@ fn Context::parse_paren_or_tuple_expr(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (AtomExpr, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Bracket('('), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_paren_or_tuple_expr")
+    panic()
+  }
+  let exprs : Array[Expr] = Array::new()
+  let (tokens, end_lineno, end_column) = loop tokens {
+    [{ kind: Bracket(')'), lineno, column }, .. rest] =>
+      break (rest, lineno, column)
+    [{ kind: Comma, .. }, { kind: Bracket(')'), lineno, column }, .. rest] =>
+      break (rest, lineno, column)
+    [{ kind: Comma, .. }, .. tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+  }
+  let kind = match exprs.length() {
+    0 => AtomExprKind::Unit
+    1 => AtomExprKind::Paren(exprs[0])
+    _ => AtomExprKind::Tuple(exprs)
+  }
+  let atom_expr = AtomExpr::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    ty: None,
+    kind,
+  }
+  (atom_expr, tokens)
 }
 
 ///|
@@ -1010,7 +1209,40 @@ fn Context::parse_array_expr(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (AtomExpr, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Bracket('['), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_array_expr")
+    panic()
+  }
+  let exprs : Array[Expr] = Array::new()
+  let (tokens, end_lineno, end_column) = loop tokens[1:] {
+    [{ kind: Bracket(']'), lineno, column }, .. rest] =>
+      break (rest, lineno, column)
+    [{ kind: Comma, .. }, { kind: Bracket(']'), lineno, column }, .. rest] =>
+      break (rest, lineno, column)
+    [{ kind: Comma, .. }, .. tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => {
+      let (expr, rest) = self.parse_expr(tokens)
+      exprs.push(expr)
+      continue rest
+    }
+  }
+  let atom_expr = AtomExpr::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    ty: None,
+    kind: AtomExprKind::Array(exprs),
+  }
+  (atom_expr, tokens)
 }
 
 ///|
@@ -1029,6 +1261,7 @@ pub enum StmtKind {
   AssignStmt(AssignStmt)
   WhileStmt(WhileStmt)
   ForStmt(ForStmt)
+  ExprStmt(Expr)
 } derive(Show, Eq)
 
 ///|
@@ -1059,16 +1292,39 @@ pub fn Context::parse_stmt(
       }
       (stmt, rest)
     }
+    // Assignment must start with a lower ident
+    // but starting with a lower ident does not
+    // mean it's an assignment.
+    //
+    // Hence need to parse a left value first and
+    // check if it's followed by an assignment operator.
     [{ kind: Lower(_), .. }, ..] as tokens => {
-      let (assign_stmt, rest) = self.parse_assign_stmt(tokens)
-      let stmt = Stmt::{
-        lineno: assign_stmt.lineno,
-        column: assign_stmt.column,
-        end_lineno: assign_stmt.end_lineno,
-        end_column: assign_stmt.end_column,
-        kind: StmtKind::AssignStmt(assign_stmt),
+      let (_, rest) = self.parse_left_value(tokens)
+      if rest is [{kind: AssignOp(_), ..}, ..] {
+        let (assign_stmt, rest) = self.parse_assign_stmt(tokens)
+        let stmt = Stmt::{
+          lineno: assign_stmt.lineno,
+          column: assign_stmt.column,
+          end_lineno: assign_stmt.end_lineno,
+          end_column: assign_stmt.end_column,
+          kind: StmtKind::AssignStmt(assign_stmt),
+        }
+        (stmt, rest)
+      } else {
+        let (expr, rest) = self.parse_expr(tokens)
+        guard rest
+          is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
+          raise ParseError((rest[0], "Expect ';'"))
+        }
+        let stmt = Stmt::{
+          lineno: expr.lineno,
+          column: expr.column,
+          end_lineno,
+          end_column,
+          kind: StmtKind::ExprStmt(expr),
+        }
+        (stmt, rest[1:])
       }
-      (stmt, rest)
     }
     [{ kind: Keyword(While), .. }, ..] as tokens => {
       let (while_stmt, rest) = self.parse_while_stmt(tokens)
@@ -1096,7 +1352,21 @@ pub fn Context::parse_stmt(
       println("Compiler ICE: Empty Token ArrayView")
       panic()
     }
-    _ => raise ParseError((tokens[0], "InValid Statement"))
+    tokens => {
+      let (expr, rest) = self.parse_expr(tokens)
+      guard rest
+        is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
+        raise ParseError((rest[0], "Expect ';'"))
+      }
+      let stmt = Stmt::{
+        lineno: expr.lineno,
+        column: expr.column,
+        end_lineno,
+        end_column,
+        kind: StmtKind::ExprStmt(expr),
+      }
+      (stmt, rest[1:])
+    }
   }
 }
 
@@ -1116,7 +1386,38 @@ pub fn Context::parse_let_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (LetStmt, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Keyword(Let), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_let_stmt")
+    panic()
+  }
+  let (pattern, tokens) = self.parse_pattern(tokens)
+  let (ty, tokens) = if tokens is [{ kind: Colon, .. }, .. tokens] {
+    guard tokens is [{ kind: Upper(_), .. }, ..] else {
+      raise ParseError((tokens[0], "Expect a type name"))
+    }
+    let (ty, tokens) = self.parse_type(tokens[1:])
+    (Some(ty), tokens)
+  } else {
+    (None, tokens)
+  }
+  guard tokens is [{ kind: AssignOp(Assign), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect '='"))
+  }
+  let (expr, tokens) = self.parse_expr(tokens)
+  guard tokens
+    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect ';'"))
+  }
+  let let_stmt = LetStmt::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    pattern,
+    ty,
+    expr,
+  }
+  (let_stmt, tokens)
 }
 
 ///|
@@ -1135,7 +1436,40 @@ pub fn Context::parse_let_mut_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (LetMutStmt, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Keyword(Let), lineno, column }, { kind: Keyword(Mut), .. }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_let_mut_stmt")
+    panic()
+  }
+  guard tokens is [{ kind: Lower(name), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect a lower ident"))
+  }
+  let (ty, tokens) = if tokens is [{ kind: Colon, .. }, .. tokens] {
+    guard tokens is [{ kind: Upper(_), .. }, ..] else {
+      raise ParseError((tokens[0], "Expect a type name"))
+    }
+    let (ty, tokens) = self.parse_type(tokens[1:])
+    (Some(ty), tokens)
+  } else {
+    (None, tokens)
+  }
+  guard tokens is [{ kind: AssignOp(Assign), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect '='"))
+  }
+  let (expr, tokens) = self.parse_expr(tokens)
+  guard tokens
+    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect ';'"))
+  }
+  let let_mut_stmt = LetMutStmt::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    name,
+    ty,
+    expr,
+  }
+  (let_mut_stmt, tokens)
 }
 
 ///|
@@ -1144,7 +1478,7 @@ pub struct AssignStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  name : String
+  left_value: LeftValue
   op : AssignOp
   expr : Expr
 } derive(Show, Eq)
@@ -1154,7 +1488,90 @@ pub fn Context::parse_assign_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (AssignStmt, ArrayView[Token]) raise ParseError {
-  ...
+  let (left_value, tokens) = self.parse_left_value(tokens)
+  guard tokens is [{ kind: AssignOp(op), .. }, ..tokens] else {
+    raise ParseError((tokens[0], "Expect an assign operator"))
+  }
+  let (expr, tokens) = self.parse_expr(tokens)
+  guard tokens
+    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
+    raise ParseError((tokens[0], "Expect ';'"))
+  }
+  let assign_stmt = AssignStmt::{
+    lineno: left_value.lineno,
+    column: left_value.column,
+    end_lineno,
+    end_column,
+    left_value,
+    op,
+    expr,
+  }
+  (assign_stmt, tokens)
+}
+
+pub struct LeftValue {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : LeftValueKind
+} derive(Show, Eq)
+
+pub enum LeftValueKind {
+  Ident(String)
+  ArrayAccess(LeftValue, Expr)
+  FieldAccess(LeftValue, String)
+} derive(Show, Eq)
+
+
+///|
+pub fn Context::parse_left_value(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (LeftValue, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Lower(ident), lineno, column }, ..] else {
+    raise ParseError((tokens[0], "Expect a lower ident"))
+  }
+  let left_value = LeftValue::{
+    lineno,
+    column,
+    end_lineno: lineno,
+    end_column: column,
+    kind: LeftValueKind::Ident(ident),
+  }
+  if !(tokens is [{kind: Bracket('[') | Dot, ..}, ..]) {
+    return (left_value, tokens[1:])
+  }
+
+  let mut left_value = left_value
+
+  loop tokens[1:] {
+    [{ kind: Bracket('['), .. }, ..tokens] => {
+      let (index_expr, tokens) = self.parse_expr(tokens)
+      guard tokens is [{ kind: Bracket(']'), lineno, column }, ..tokens] else {
+        raise ParseError((tokens[0], "Expect ']'"))
+      }
+      left_value = LeftValue::{
+        lineno: left_value.lineno,
+        column: left_value.column,
+        end_lineno: lineno,
+        end_column: column,
+        kind: LeftValueKind::ArrayAccess(left_value, index_expr),
+      }
+      continue tokens
+    }
+    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, ..tokens] => {
+      left_value = LeftValue::{
+        lineno: left_value.lineno,
+        column: left_value.column,
+        end_lineno: lineno,
+        end_column: column,
+        kind: LeftValueKind::FieldAccess(left_value, field),
+      }
+      continue tokens
+    }
+    tokens => break (left_value, tokens)
+  }
 }
 
 ///|
@@ -1181,9 +1598,9 @@ pub struct ForStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  init : Stmt?
+  init : Array[(String, Expr)]?
   cond : Expr?
-  step : Stmt?
+  step : Array[(String, AssignOp, Expr)]?
   body : BlockExpr
 } derive(Show, Eq)
 
@@ -1216,5 +1633,62 @@ pub fn Context::parse_pattern(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (Pattern, ArrayView[Token]) raise ParseError {
-  ...
+  match tokens {
+    [{ kind: Wildcard, lineno, column }, ..tokens] => {
+      let pattern = Pattern::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        kind: Wildcard,
+      }
+      (pattern, tokens)
+    }
+    [{ kind: Lower(ident), lineno, column }, ..tokens] => {
+      let pattern = Pattern::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        kind: Ident(ident),
+      }
+      (pattern, tokens)
+    }
+    [{ kind: Bracket('('), lineno, column }, ..tokens] => {
+      let patterns : Array[Pattern] = Array::new()
+      loop tokens {
+        [{kind: Bracket(')'), ..}, ..] => {
+          break 
+        }
+        [{kind: Lower(_) | Wildcard | Bracket('('), ..}, ..] as tokens=> {
+          let (pat, rest) = self.parse_pattern(tokens)
+          patterns.push(pat)
+          continue rest
+        }
+        tokens => {
+          raise ParseError((tokens[0], "InValid Pattern") )
+        }
+      }
+      let kind = if patterns.length() == 0 {
+        raise ParseError((tokens[0], "InValid Pattern"))
+      } else if patterns.length() == 1 {
+        raise ParseError((tokens[0], "InValid Pattern, must over 1 pattern for tuple"))
+      } else {
+        PatternKind::Tuple(patterns)
+      }
+      let pattern = Pattern::{
+        lineno,
+        column,
+        end_lineno: tokens[0].lineno,
+        end_column: tokens[0].column,
+        kind,
+      }
+      (pattern, tokens)
+    }
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    _ => raise ParseError((tokens[0], "InValid Pattern"))
+  }
 }

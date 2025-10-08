@@ -106,3 +106,42 @@ test "AtomExpr Parsing" {
   let (a, _) = ctx.parse_atom_expr(tok_view)
   assert_true(a is { kind: Ident("bar"), .. })
 }
+
+test "ApplyExpr Parsing" {
+  let code = 
+    #|42 true
+    #|x y
+    #|arr[1] vec[7]
+    #|tup.2 pt.8
+    #|obj.field list.next
+    #|add(1, 2) fact(3)
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  let (e, tok_view) = ctx.parse_apply_expr(tokens[:])
+  assert_true(e.kind is AtomExpr(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is AtomExpr(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is AtomExpr(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is AtomExpr(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is ArrayAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is ArrayAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is TupleAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is TupleAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is FieldAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is FieldAccess(_))
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is Call(_))
+  let (e, _) = ctx.parse_apply_expr(tok_view)
+  assert_true(e.kind is Call(_))
+}
