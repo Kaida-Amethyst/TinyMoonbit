@@ -429,8 +429,8 @@ fn tokenize_lower_ident(code : StringView) -> (TokenKind, StringView, Int) {
 
 ///|
 ///
-/// TODO: handle Int64, UInt, UInt64, Float, Double
-/// Need support:
+/// Handle Int64, UInt, UInt64, Float, Double
+/// Support:
 ///
 /// 1. normal integer: 42 1577
 /// 2. hex integer: 0x1A 0xFF
@@ -444,22 +444,166 @@ fn tokenize_number(
 ) -> (Token, StringView, Int) raise TokenizeError {
   let sb = StringBuilder::new()
   let mut len = 0
-  let rest = loop code {
-    ['0'..='9' as c, .. rest] => {
-      sb.write_char(c)
-      len += 1
-      continue rest
+  let mut is_hex = false
+  let mut is_binary = false
+  let mut is_float = false
+
+  // Check for hex or binary prefix
+  let rest = match code {
+    [.. "0x", .. rest] | [.. "0X", .. rest] => {
+      is_hex = true
+      len += 2
+      rest
     }
-    rest => break rest
+    [.. "0b", .. rest] | [.. "0B", .. rest] => {
+      is_binary = true
+      len += 2
+      rest
+    }
+    _ => code
+  }
+
+  // Parse the numeric part
+  let rest = if is_hex {
+    // Parse hexadecimal
+    loop rest {
+      ['0'..='9' | 'a'..='f' | 'A'..='F' as c, .. rest] => {
+        sb.write_char(c)
+        len += 1
+        continue rest
+      }
+      rest => break rest
+    }
+  } else if is_binary {
+    // Parse binary
+    loop rest {
+      ['0' | '1' as c, .. rest] => {
+        sb.write_char(c)
+        len += 1
+        continue rest
+      }
+      rest => break rest
+    }
+  } else {
+    // Parse decimal (including potential float)
+    let rest = loop rest {
+      ['0'..='9' as c, .. rest] => {
+        sb.write_char(c)
+        len += 1
+        continue rest
+      }
+      rest => break rest
+    }
+    // Check for decimal point (float)
+    match rest {
+      ['.', '0'..='9', ..] as dot_rest => {
+        is_float = true
+        sb.write_char('.')
+        len += 1
+        let rest_after_dot = match dot_rest {
+          ['.', .. rest] => rest
+          _ => panic()
+        }
+        // Parse fractional part
+        loop rest_after_dot {
+          ['0'..='9' as c, .. rest] => {
+            sb.write_char(c)
+            len += 1
+            continue rest
+          }
+          rest => break rest
+        }
+      }
+      _ => rest
+    }
   }
   let num_str = sb.to_string()
-  let num = @strconv.parse_int(num_str) catch {
+
+  // Check for suffix
+  let (kind, rest, _suffix_len) = match rest {
+    ['U' | 'u', 'L' | 'l', .. rest] => {
+      // UL suffix - UInt64
+      len += 2
+      let value = try {
+        if is_hex {
+          @strconv.parse_uint64(num_str, base=16)
+        } else if is_binary {
+          @strconv.parse_uint64(num_str, base=2)
+        } else {
+          @strconv.parse_uint64(num_str)
+        }
+      } catch {
+        _ => raise TokenizeError("Invalid UInt64 literal: \{num_str}")
+      }
+      (TokenKind::UInt64(value), rest, 2)
+    }
+    ['L' | 'l', .. rest] => {
+      // L suffix - Int64
+      len += 1
+      let value = try {
+        if is_hex {
+          @strconv.parse_int64(num_str, base=16)
+        } else if is_binary {
+          @strconv.parse_int64(num_str, base=2)
+        } else {
+          @strconv.parse_int64(num_str)
+        }
+      } catch {
+        _ => raise TokenizeError("Invalid Int64 literal: \{num_str}")
+      }
+      (TokenKind::Int64(value), rest, 1)
+    }
+    ['U' | 'u', .. rest] => {
+      // U suffix - UInt
+      len += 1
+      let value = try {
+        if is_hex {
+          @strconv.parse_uint(num_str, base=16)
+        } else if is_binary {
+          @strconv.parse_uint(num_str, base=2)
+        } else {
+          @strconv.parse_uint(num_str)
+        }
+      } catch {
+        _ => raise TokenizeError("Invalid UInt literal: \{num_str}")
+      }
+      (TokenKind::UInt(value), rest, 1)
+    }
+    ['F' | 'f', .. rest] if is_float || not(is_hex || is_binary) => {
+      // F suffix - Float (only for decimal numbers)
+      len += 1
+      // If not already a float, treat the integer as a float
+      let float_str = if is_float { num_str } else { num_str + ".0" }
+      let value = @strconv.parse_double(float_str) catch {
+        _ => raise TokenizeError("Invalid Float literal: \{float_str}")
+      }
+      (TokenKind::Float(value.to_float()), rest, 1)
+    }
     _ =>
-      raise TokenizeError(
-        "Tokenize Error: Invalid integer literal: \{num_str} at line \{line}, column \{column}",
-      )
+      // No suffix
+      if is_float {
+        // It's a double/float without suffix, treat as Float for compatibility
+        let value = @strconv.parse_double(num_str) catch {
+          _ => raise TokenizeError("Invalid Float literal: \{num_str}")
+        }
+        (TokenKind::Float(value.to_float()), rest, 0)
+      } else {
+        // Regular integer
+        let value = try {
+          if is_hex {
+            @strconv.parse_int(num_str, base=16)
+          } else if is_binary {
+            @strconv.parse_int(num_str, base=2)
+          } else {
+            @strconv.parse_int(num_str)
+          }
+        } catch {
+          _ => raise TokenizeError("Invalid Int literal: \{num_str}")
+        }
+        (TokenKind::Int(value), rest, 0)
+      }
   }
-  (Token::new(Int(num), line, column), rest, len)
+  (Token::new(kind, line, column), rest, len)
 }
 
 // return token, remaining code, length of the string token (including quotes)
