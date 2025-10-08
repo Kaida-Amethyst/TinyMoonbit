@@ -429,6 +429,13 @@ fn tokenize_lower_ident(code : StringView) -> (TokenKind, StringView, Int) {
 ///|
 ///
 /// TODO: handle Int64, UInt, UInt64, Float, Double
+/// Need support:
+///
+/// 1. normal integer: 42 1577
+/// 2. hex integer: 0x1A 0xFF
+/// 3. binary integer: 0b1010 0b1101
+/// 4. integer with suffix: 42L, 100u (allowed: u, U, l, L, ul, uL, Ul, UL)
+/// 5. float: 3.14, 2.71f (allowed suffix: f, F)
 fn tokenize_number(
   code : StringView,
   line : Int,
