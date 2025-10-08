@@ -2,7 +2,7 @@
   "name": "Kaida-Amethyst/TinyMoonbit",
   "version": "0.1.0",
   "deps": {
-    "Kaida-Amethyst/MoonLLVM": "0.1.0"
+    "Kaida-Amethyst/MoonLLVM": "0.1.7"
   },
   "readme": "README.md",
   "repository": "",
