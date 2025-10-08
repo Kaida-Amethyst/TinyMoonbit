@@ -82,27 +82,27 @@ test "Param List Parsing" {
   assert_true(tok_view is [{ kind: Bracket(')'), .. }, ..])
 }
 
-//test "AtomExpr Parsing" {
-//  let code = 
-//    #|42 3.14 true false "hello"
-//    #|foo bar
-//
-//  let ctx = Context::new(code)
-//  ctx..tokenize()
-//  let { tokens, .. } = ctx
-//
-//  let (a, tok_view) = ctx.parse_atom_expr(tokens[:])
-//  assert_true(a is { kind: Int(42), .. })
-//  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: Double(3.14), .. })
-//  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: Bool(true), .. })
-//  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: Bool(false), .. })
-//  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: String("hello"), .. })
-//  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: Ident("foo"), .. })
-//  let (a, _) = ctx.parse_atom_expr(tok_view)
-//  assert_true(a is { kind: Ident("bar"), .. })
-//}
+test "AtomExpr Parsing" {
+  let code = 
+    #|42 3.14 true false "hello"
+    #|foo bar
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  let (a, tok_view) = ctx.parse_atom_expr(tokens[:])
+  assert_true(a is { kind: Int(42), .. })
+  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: Double(3.14), .. })
+  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: Bool(true), .. })
+  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: Bool(false), .. })
+  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: String("hello"), .. })
+  let (a, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: Ident("foo"), .. })
+  let (a, _) = ctx.parse_atom_expr(tok_view)
+  assert_true(a is { kind: Ident("bar"), .. })
+}

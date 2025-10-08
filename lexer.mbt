@@ -586,7 +586,7 @@ fn tokenize_number(
         let value = @strconv.parse_double(num_str) catch {
           _ => raise TokenizeError("Invalid Float literal: \{num_str}")
         }
-        (TokenKind::Float(value.to_float()), rest, 0)
+        (TokenKind::Double(value), rest, 0)
       } else {
         // Regular integer
         let value = try {
