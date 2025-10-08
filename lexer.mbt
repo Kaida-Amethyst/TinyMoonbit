@@ -2,7 +2,7 @@
 pub suberror TokenizeError String derive(Show)
 
 ///|
-pub enum Keyword {
+pub(all) enum Keyword {
   Fn
   Struct
   Enum
@@ -18,7 +18,7 @@ pub enum Keyword {
 } derive(Show, Eq)
 
 ///|
-pub enum BinaryOp {
+pub(all) enum BinaryOp {
   Plus // +
   Minus // -
   Mult // *
@@ -53,7 +53,7 @@ fn BinaryOp::precedence(self : Self) -> Int {
 }
 
 ///|
-pub enum AssignOp {
+pub(all) enum AssignOp {
   Assign // =
   PlusAssign // +=
   MinusAssign // -=
@@ -75,7 +75,7 @@ pub fn Token::new(kind : TokenKind, lineno : Int, column : Int) -> Token {
 }
 
 ///|
-pub enum TokenKind {
+pub(all) enum TokenKind {
   Bool(Bool) // true, false
   Int(Int) // 1, 42, -100
   Int64(Int64) // 1L, 42L, -100L
@@ -497,38 +497,3 @@ fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringVi
   (Token::new(String(str_val), line, column), rest, len)
 }
 
-///|
-test "tokenize keywords" {
-  let code =
-    #|fn let mut
-    #|if else
-    #|match while for return
-  let ctx = Context::new(code)
-  ctx..tokenize()
-  let tokens = ctx.tokens
-  assert_eq(tokens.length(), 10)
-  assert_eq(tokens[0], Token::new(Keyword(Fn), 1, 1))
-  assert_eq(tokens[1], Token::new(Keyword(Let), 1, 4))
-  assert_eq(tokens[2], Token::new(Keyword(Mut), 1, 8))
-  assert_eq(tokens[3], Token::new(Keyword(If), 2, 1))
-  assert_eq(tokens[4], Token::new(Keyword(Else), 2, 4))
-  assert_eq(tokens[5], Token::new(Keyword(Match), 3, 1))
-  assert_eq(tokens[6], Token::new(Keyword(While), 3, 7))
-  assert_eq(tokens[7], Token::new(Keyword(For), 3, 13))
-  assert_eq(tokens[8], Token::new(Keyword(Return), 3, 17))
-  assert_eq(tokens[9], Token::new(EOF, 3, 23))
-}
-
-///|
-test "tokenize string" {
-  let code = 
-    #|"hello, world!"
-    #|"line1\nline2"
-
-  let ctx = Context::new(code)
-  ctx..tokenize()
-  let tokens = ctx.tokens
-  assert_eq(tokens.length(), 3)
-  assert_eq(tokens[0], Token::new(String("hello, world!"), 1, 1))
-  assert_eq(tokens[1], Token::new(String("line1\nline2"), 2, 1))
-}
