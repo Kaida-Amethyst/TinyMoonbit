@@ -1,0 +1,392 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "Kaida-Amethyst/TinyMoonbit"
+
+import(
+  "Kaida-Amethyst/either"
+)
+
+// Values
+fn fib(Int) -> Int64
+
+// Errors
+pub suberror ParseError (Token, String)
+impl Show for ParseError
+
+pub suberror TokenizeError String
+impl Show for TokenizeError
+
+// Types and methods
+pub struct ApplyExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty : Type?
+  kind : ApplyExprKind
+}
+impl Eq for ApplyExpr
+impl Show for ApplyExpr
+
+pub enum ApplyExprKind {
+  AtomExpr(AtomExpr)
+  ArrayAccess(ApplyExpr, Expr)
+  TupleAccess(ApplyExpr, Int)
+  Call(ApplyExpr, Array[Expr])
+}
+impl Eq for ApplyExprKind
+impl Show for ApplyExprKind
+
+pub(all) enum AssignOp {
+  Assign
+  PlusAssign
+  MinusAssign
+  MultAssign
+  DivAssign
+  ModAssign
+}
+impl Eq for AssignOp
+impl Show for AssignOp
+impl ToJson for AssignOp
+
+pub struct AssignStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  op : AssignOp
+  expr : Expr
+}
+impl Eq for AssignStmt
+impl Show for AssignStmt
+
+pub struct AtomExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty : TypeKind?
+  kind : AtomExprKind
+}
+impl Eq for AtomExpr
+impl Show for AtomExpr
+
+pub enum AtomExprKind {
+  Int(Int)
+  Int64(Int64)
+  UInt(UInt)
+  UInt64(UInt64)
+  Float(Float)
+  Double(Double)
+  Bool(Bool)
+  String(String)
+  Ident(String)
+  Unit
+  Paren(Expr)
+  Tuple(Array[Expr])
+  Array(Array[Expr])
+}
+impl Eq for AtomExprKind
+impl Show for AtomExprKind
+
+pub(all) enum BinaryOp {
+  Plus
+  Minus
+  Mult
+  Div
+  Mod
+  ShiftLeft
+  ShiftRight
+  Eq
+  NE
+  LT
+  GT
+  LE
+  GE
+  And
+  Or
+  BitAnd
+  BitOr
+}
+impl Eq for BinaryOp
+impl Show for BinaryOp
+
+pub struct BlockExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  stmts : Array[Stmt]
+  expr : Expr?
+}
+impl Eq for BlockExpr
+impl Show for BlockExpr
+
+pub struct Context {
+  code : String
+  tokens : Array[Token]
+  fatal_errors : Array[ParseError]
+  normal_errors : Array[ParseError]
+}
+fn Context::new(String) -> Self
+fn Context::parse_apply_expr(Self, ArrayView[Token]) -> (ApplyExpr, ArrayView[Token]) raise ParseError
+fn Context::parse_assign_stmt(Self, ArrayView[Token]) -> (AssignStmt, ArrayView[Token]) raise ParseError
+fn Context::parse_atom_expr(Self, ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError
+fn Context::parse_block_expr(Self, ArrayView[Token]) -> (BlockExpr, ArrayView[Token]) raise ParseError
+fn Context::parse_expr(Self, ArrayView[Token]) -> (Expr, ArrayView[Token]) raise ParseError
+fn Context::parse_extern_function(Self, ArrayView[Token]) -> (ExternFunction, ArrayView[Token]) raise ParseError
+fn Context::parse_for_stmt(Self, ArrayView[Token]) -> (ForStmt, ArrayView[Token]) raise ParseError
+fn Context::parse_if_expr(Self, ArrayView[Token]) -> (IfExpr, ArrayView[Token]) raise ParseError
+fn Context::parse_let_mut_stmt(Self, ArrayView[Token]) -> (LetMutStmt, ArrayView[Token]) raise ParseError
+fn Context::parse_let_stmt(Self, ArrayView[Token]) -> (LetStmt, ArrayView[Token]) raise ParseError
+fn Context::parse_param(Self, ArrayView[Token]) -> (Param, ArrayView[Token]) raise ParseError
+fn Context::parse_param_list(Self, ArrayView[Token]) -> (Array[Param], ArrayView[Token]) raise ParseError
+fn Context::parse_pattern(Self, ArrayView[Token]) -> (Pattern, ArrayView[Token]) raise ParseError
+fn Context::parse_stmt(Self, ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise ParseError
+fn Context::parse_top_let(Self, ArrayView[Token]) -> (TopLet, ArrayView[Token]) raise ParseError
+fn Context::parse_type(Self, ArrayView[Token]) -> (Type, ArrayView[Token]) raise ParseError
+fn Context::parse_while_stmt(Self, ArrayView[Token]) -> (WhileStmt, ArrayView[Token]) raise ParseError
+fn Context::tokenize(Self) -> Unit raise TokenizeError
+
+pub struct Expr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty : Type?
+  kind : ExprKind
+}
+impl Eq for Expr
+impl Show for Expr
+
+pub enum ExprKind {
+  ApplyExpr(ApplyExpr)
+  BlockExpr(BlockExpr)
+  BinaryExpr(BinaryOp, Expr, Expr)
+  IfExpr(IfExpr)
+}
+impl Eq for ExprKind
+impl Show for ExprKind
+
+pub struct ExternFunction {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  fname : String
+  ffi_name : String
+  params : Array[Param]
+  ret_ty : Type
+}
+
+pub struct ForStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  init : Stmt?
+  cond : Expr?
+  step : Stmt?
+  body : BlockExpr
+}
+impl Eq for ForStmt
+impl Show for ForStmt
+
+pub struct IfExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  cond : Expr
+  then_block : BlockExpr
+  else_block : @either.Either[IfExpr, BlockExpr]?
+}
+impl Eq for IfExpr
+impl Show for IfExpr
+
+pub(all) enum Keyword {
+  Fn
+  Struct
+  Enum
+  Let
+  Mut
+  If
+  Else
+  Match
+  While
+  For
+  Return
+  Extern
+}
+impl Eq for Keyword
+impl Show for Keyword
+
+pub struct LetMutStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type?
+  expr : Expr
+}
+impl Eq for LetMutStmt
+impl Show for LetMutStmt
+
+pub struct LetStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  pattern : Pattern
+  ty : Type?
+  expr : Expr
+}
+impl Eq for LetStmt
+impl Show for LetStmt
+
+pub struct Param {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type
+}
+impl Eq for Param
+impl Show for Param
+
+pub struct Pattern {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : PatternKind
+}
+impl Eq for Pattern
+impl Show for Pattern
+
+pub enum PatternKind {
+  Wildcard
+  Ident(String)
+  Tuple(Array[Pattern])
+}
+impl Eq for PatternKind
+impl Show for PatternKind
+
+pub struct Stmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : StmtKind
+}
+impl Eq for Stmt
+impl Show for Stmt
+
+pub enum StmtKind {
+  LetStmt(LetStmt)
+  LetMutStmt(LetMutStmt)
+  AssignStmt(AssignStmt)
+  WhileStmt(WhileStmt)
+  ForStmt(ForStmt)
+}
+impl Eq for StmtKind
+impl Show for StmtKind
+
+pub struct Token {
+  kind : TokenKind
+  lineno : Int
+  column : Int
+}
+fn Token::new(TokenKind, Int, Int) -> Self
+impl Eq for Token
+impl Show for Token
+
+pub(all) enum TokenKind {
+  Bool(Bool)
+  Int(Int)
+  Int64(Int64)
+  UInt(UInt)
+  UInt64(UInt64)
+  Float(Float)
+  Double(Double)
+  String(String)
+  Keyword(Keyword)
+  Upper(String)
+  Lower(String)
+  BinaryOp(BinaryOp)
+  AssignOp(AssignOp)
+  Not
+  Bracket(Char)
+  Dot
+  Comma
+  Colon
+  DoubleColon
+  SemiColon
+  RightArrow
+  FatRightArrow
+  EOF
+}
+impl Eq for TokenKind
+impl Show for TokenKind
+
+pub struct TopFunction {
+  lineno : Int
+  column : Int
+  fname : String
+}
+
+pub struct TopLet {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type?
+  expr : Expr
+}
+
+pub struct Type {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : TypeKind
+}
+impl Eq for Type
+impl Show for Type
+
+pub enum TypeKind {
+  Unit
+  Bool
+  Int
+  Int64
+  UInt
+  UInt64
+  Float
+  Double
+  String
+  Tuple(Array[Type])
+  Array(Type)
+  Function(Array[Type], Type)
+  Defined(String, Array[Type])
+}
+impl Eq for TypeKind
+impl Show for TypeKind
+
+pub struct WhileStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  cond : Expr
+  body : BlockExpr
+}
+impl Eq for WhileStmt
+impl Show for WhileStmt
+
+// Type aliases
+
+// Traits
+

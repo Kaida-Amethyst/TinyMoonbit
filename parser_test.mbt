@@ -73,15 +73,14 @@ test "Param List Parsing" {
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
-  guard tokens is [{kind: Bracket('('), ..}, ..tokens]
+  guard tokens is [{ kind: Bracket('('), .. }, .. tokens]
   let (params, tok_view) = ctx.parse_param_list(tokens)
   assert_true(params.length() is 3)
-  assert_true(params[0] is {name: "a", ty: {kind: Int, ..}, ..})
-  assert_true(params[1] is {name: "b", ty: {kind: Float, ..}, ..})
-  assert_true(params[2] is {name: "c", ty: {kind: Double, ..}, ..})
-  assert_true(tok_view is [{kind: Bracket(')'), ..}, ..])
+  assert_true(params[0] is { name: "a", ty: { kind: Int, .. }, .. })
+  assert_true(params[1] is { name: "b", ty: { kind: Float, .. }, .. })
+  assert_true(params[2] is { name: "c", ty: { kind: Double, .. }, .. })
+  assert_true(tok_view is [{ kind: Bracket(')'), .. }, ..])
 }
-
 
 //test "AtomExpr Parsing" {
 //  let code = 

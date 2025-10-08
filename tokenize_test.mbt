@@ -22,10 +22,9 @@ test "tokenize keywords" {
 
 ///|
 test "tokenize string" {
-  let code = 
+  let code =
     #|"hello, world!"
     #|"line1\nline2"
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let tokens = ctx.tokens
@@ -34,8 +33,9 @@ test "tokenize string" {
   assert_eq(tokens[1], Token::new(String("line1\nline2"), 2, 1))
 }
 
+///|
 test "tokenize number" {
-  let code = 
+  let code =
     #|42 58
     #|1U 5u
     #|1L 9l
@@ -45,10 +45,8 @@ test "tokenize number" {
     #|0b1010 0b1100L
     #|3.14 5.225
     #|7.18f 9.81F
-
   let ctx = Context::new(code)
   ctx..tokenize()
-
   let tokens = ctx.tokens
   assert_eq(tokens.length(), 19)
   assert_eq(tokens[0], Token::new(Int(42), 1, 1))
@@ -70,5 +68,4 @@ test "tokenize number" {
   assert_eq(tokens[16], Token::new(Float(7.18), 9, 1))
   assert_eq(tokens[17], Token::new(Float(9.81), 9, 6))
   assert_eq(tokens[18], Token::new(EOF, 9, 9))
-
 }

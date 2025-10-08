@@ -38,6 +38,7 @@ pub(all) enum BinaryOp {
   BitOr // |
 } derive(Show, Eq)
 
+///|
 fn BinaryOp::precedence(self : Self) -> Int {
   match self {
     Or => 1
@@ -462,9 +463,17 @@ fn tokenize_number(
 }
 
 // return token, remaining code, length of the string token (including quotes)
-fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringView, Int) raise TokenizeError {
-  guard code is ['\"', ..code] else {
-    println("Compiler ICE: Tokenize String Error at line \{line}, column \{column}, missing opening quote")
+
+///|
+fn tokenize_string(
+  code : StringView,
+  line : Int,
+  column : Int,
+) -> (Token, StringView, Int) raise TokenizeError {
+  guard code is ['\"', .. code] else {
+    println(
+      "Compiler ICE: Tokenize String Error at line \{line}, column \{column}, missing opening quote",
+    )
     panic()
   }
   let sb = StringBuilder::new()
@@ -476,7 +485,9 @@ fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringVi
     }
     ['\\', .. rest] => {
       guard rest is [c, .. rest] else {
-        raise TokenizeError("Tokenize Error: Invalid escape sequence at line \{line}, column \{column + len}")
+        raise TokenizeError(
+          "Tokenize Error: Invalid escape sequence at line \{line}, column \{column + len}",
+        )
       }
       let escaped_char = match c {
         'n' => '\n'
@@ -486,7 +497,9 @@ fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringVi
         '\"' => '\"'
         '\'' => '\''
         other =>
-          raise TokenizeError("Tokenize Error: Unknown escape character '\{other}' at line \{line}, column \{column + len}")
+          raise TokenizeError(
+            "Tokenize Error: Unknown escape character '\{other}' at line \{line}, column \{column + len}",
+          )
       }
       sb.write_char(escaped_char)
       len += 2 // for the backslash and the escaped character
@@ -498,9 +511,10 @@ fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringVi
       continue rest
     }
     [] =>
-      raise TokenizeError("Tokenize Error: Unterminated string literal at line \{line}, column \{column}")
+      raise TokenizeError(
+        "Tokenize Error: Unterminated string literal at line \{line}, column \{column}",
+      )
   }
   let str_val = sb.to_string()
   (Token::new(String(str_val), line, column), rest, len)
 }
-
