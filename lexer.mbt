@@ -68,8 +68,9 @@ pub enum TokenKind {
   Int64(Int64) // 1L, 42L, -100L
   UInt(UInt) // 1U, 42U, 100U
   UInt64(UInt64) // 1UL, 42UL, 100UL
-  //Float(Float) // 1.0F, 3.14F
+  Float(Float) // 1.0F, 3.14F
   Double(Double)
+  String(String) // "hello", "world"
   Keyword(Keyword)
   Upper(String)
   Lower(String)
@@ -81,8 +82,8 @@ pub enum TokenKind {
   Colon
   DoubleColon // ::
   SemiColon // ;
-  LeftArrow // ->
-  BoldLeftArrow // =>
+  RightArrow // ->
+  FatRightArrow // =>
   EOF
 } derive(Show, Eq)
 
@@ -124,13 +125,13 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       continue rest
     }
     [.. "->", .. rest] => {
-      let tok = Token::new(LeftArrow, line, column)
+      let tok = Token::new(RightArrow, line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "=>", .. rest] => {
-      let tok = Token::new(BoldLeftArrow, line, column)
+      let tok = Token::new(FatRightArrow, line, column)
       tokens.push(tok)
       column += 2
       continue rest
@@ -339,6 +340,12 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       column += 1
       continue rest
     }
+    ['\"', ..] as code => {
+      let (tok, rest, len) = tokenize_string(code, line, column)
+      column += len
+      tokens.push(tok)
+      continue rest
+    }
     ['A'..='Z', ..] as code => {
       let sb = StringBuilder::new()
       let rest = loop code {
@@ -433,6 +440,49 @@ fn tokenize_number(
   (Token::new(Int(num), line, column), rest, len)
 }
 
+// return token, remaining code, length of the string token (including quotes)
+fn tokenize_string(code: StringView, line: Int, column: Int) -> (Token, StringView, Int) raise TokenizeError {
+  guard code is ['\"', ..code] else {
+    println("Compiler ICE: Tokenize String Error at line \{line}, column \{column}, missing opening quote")
+    panic()
+  }
+  let sb = StringBuilder::new()
+  let mut len = 1 // for the opening quote
+  let rest = loop code {
+    ['\"', .. rest] => {
+      len += 1 // for the closing quote
+      break rest
+    }
+    ['\\', .. rest] => {
+      guard rest is [c, .. rest] else {
+        raise TokenizeError("Tokenize Error: Invalid escape sequence at line \{line}, column \{column + len}")
+      }
+      let escaped_char = match c {
+        'n' => '\n'
+        't' => '\t'
+        'r' => '\r'
+        '\\' => '\\'
+        '\"' => '\"'
+        '\'' => '\''
+        other =>
+          raise TokenizeError("Tokenize Error: Unknown escape character '\{other}' at line \{line}, column \{column + len}")
+      }
+      sb.write_char(escaped_char)
+      len += 2 // for the backslash and the escaped character
+      continue rest
+    }
+    [c, .. rest] => {
+      sb.write_char(c)
+      len += 1
+      continue rest
+    }
+    [] =>
+      raise TokenizeError("Tokenize Error: Unterminated string literal at line \{line}, column \{column}")
+  }
+  let str_val = sb.to_string()
+  (Token::new(String(str_val), line, column), rest, len)
+}
+
 ///|
 test "tokenize keywords" {
   let code =
@@ -453,4 +503,18 @@ test "tokenize keywords" {
   assert_eq(tokens[7], Token::new(Keyword(For), 3, 13))
   assert_eq(tokens[8], Token::new(Keyword(Return), 3, 17))
   assert_eq(tokens[9], Token::new(EOF, 3, 23))
+}
+
+///|
+test "tokenize string" {
+  let code = 
+    #|"hello, world!"
+    #|"line1\nline2"
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let tokens = ctx.tokens
+  assert_eq(tokens.length(), 3)
+  assert_eq(tokens[0], Token::new(String("hello, world!"), 1, 1))
+  assert_eq(tokens[1], Token::new(String("line1\nline2"), 2, 1))
 }

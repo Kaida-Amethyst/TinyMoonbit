@@ -1,9 +1,84 @@
 ///|
-test "fib" {
-  let array = [1, 2, 3, 4, 5].map(fib(_))
-
-  // `inspect` is used to check the output of the function
-  // Just write `inspect(value)` and execute `moon test --update`
-  // to update the expected output, and verify them afterwards
-  inspect(array, content="[1, 2, 3, 5, 8]")
+test "Type Parsing" {
+  let code =
+    #|Unit Int Int64 Bool UInt UInt64
+    #|Float Double (Double, Int64)
+    #|(Int) -> Int Array[Int] Point
+    #|Map[K, V] Int
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (ty, tok_view) = ctx.parse_type(tokens[:])
+  assert_true(ty is { kind: Unit, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Int, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Int64, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Bool, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: UInt, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: UInt64, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Float, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Double, .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Tuple(_), .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Function(_), .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Array(_), .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Defined(_), .. })
+  let (ty, tok_view) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Defined(_), .. })
+  let (ty, _) = ctx.parse_type(tok_view)
+  assert_true(ty is { kind: Int, .. })
 }
+
+///|
+test "Param Parsing" {
+  let code =
+    #|a: Int b: Float
+    #|c: Double foo: String 
+    #|arr: Array[Double]
+    #|map: Map[String, Int]
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (param, tok_view) = ctx.parse_param(tokens[:])
+  assert_true(param is { name: "a", ty: { kind: Int, .. }, .. })
+  let (param, tok_view) = ctx.parse_param(tok_view)
+  assert_true(param is { name: "b", ty: { kind: Float, .. }, .. })
+  let (param, tok_view) = ctx.parse_param(tok_view)
+  assert_true(param is { name: "c", ty: { kind: Double, .. }, .. })
+  let (param, tok_view) = ctx.parse_param(tok_view)
+  assert_true(param is { name: "foo", ty: { kind: String, .. }, .. })
+  let (param, tok_view) = ctx.parse_param(tok_view)
+  assert_true(
+    param is { name: "arr", ty: { kind: Array({ kind: Double, .. }), .. }, .. },
+  )
+  let (param, _) = ctx.parse_param(tok_view)
+  assert_true(param.name is "map")
+  assert_true(
+    param.ty.kind is Defined("Map", [{ kind: String, .. }, { kind: Int, .. }]),
+  )
+}
+
+///|
+test "Param List Parsing" {
+  let code = "(a: Int, b: Float, c: Double,)"
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  guard tokens is [{kind: Bracket('('), ..}, ..tokens]
+  let (params, tok_view) = ctx.parse_param_list(tokens)
+  assert_true(params.length() is 3)
+  assert_true(params[0] is {name: "a", ty: {kind: Int, ..}, ..})
+  assert_true(params[1] is {name: "b", ty: {kind: Float, ..}, ..})
+  assert_true(params[2] is {name: "c", ty: {kind: Double, ..}, ..})
+  assert_true(tok_view is [{kind: Bracket(')'), ..}, ..])
+}
+

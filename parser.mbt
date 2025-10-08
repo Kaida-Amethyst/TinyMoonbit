@@ -53,10 +53,12 @@
 ///
 /// Expr :=
 ///     ApplyExpr
-///   | unop ApplyExpr
-///   | ApplyExpr binop ApplyExpr
+///   | ApplyExpr binop ApplyExpr ;; Binary
+///   | IfExpr
+///   | MatchExpr
+///   | BlockExpr
 ///
-/// unop := "-" | "+" "!"
+/// unop := "-" | "+" | "!"
 ///
 /// binop: "+" | "-" | "*" | "/" | "%" | ">>" | "<<" |
 ///        "==" | ">=" | "<=" | ">" | "<" | "!="
@@ -260,7 +262,27 @@ pub fn Context::parse_type(
 }
 
 ///|
-pub fn Context::parse_tuple_or_function_type(
+///
+/// Ast - Tuple Type or Function Type
+///
+/// ```mbt
+/// let code = "(Int, Int64, Float, Double) -> UInt"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (ty, _) = ctx.parse_type(toks) // call parse_tuple_or_function_type inside
+///
+/// assert_true(
+///   ty is {kind: Function([
+///     {kind: Int, ..},
+///     {kind: Int64, ..},
+///     {kind: Float, ..},
+///     {kind: Double,..}
+///     ], {kind: UInt, ..}), ..}
+/// )
+/// ```
+fn Context::parse_tuple_or_function_type(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (Type, ArrayView[Token]) raise ParseError {
@@ -288,7 +310,7 @@ pub fn Context::parse_tuple_or_function_type(
     }
     tok => raise ParseError((tok[0], "InValid Type Parsing"))
   }
-  if tokens is [{ kind: LeftArrow, .. }, .. tokens] {
+  if tokens is [{ kind: RightArrow, .. }, .. tokens] {
     let (ret_ty, rest) = self.parse_type(tokens)
     (
       Type::{
@@ -306,7 +328,20 @@ pub fn Context::parse_tuple_or_function_type(
 }
 
 ///|
-pub fn Context::parse_defined_type(
+/// 
+/// Ast - Defined Type
+///
+/// ```mbt
+/// let code = "Map[Int, String]"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (ty, _) = ctx.parse_type(toks) // call parse_defined_type inside
+///
+/// assert_true(ty is {kind: Defined("Map", [{kind: Int, ..}, {kind: String, ..}]), ..})
+/// ```
+fn Context::parse_defined_type(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (Type, ArrayView[Token]) raise ParseError {
@@ -339,7 +374,7 @@ pub fn Context::parse_defined_type(
   let kind = if name is "Array" {
     match tys.length() {
       0 => raise ParseError((master_tok, "Array Must provide element Type"))
-      1 => Array(tys[0])
+      1 => TypeKind::Array(tys[0])
       _ =>
         raise ParseError((master_tok, "Array Must have only one element Type"))
     }
@@ -350,47 +385,21 @@ pub fn Context::parse_defined_type(
   (def_ty, tokens)
 }
 
-///|
-test "Type Parsing" {
-  let code =
-    #|Unit Int Int64 Bool UInt UInt64
-    #|Float Double (Double, Int64)
-    #|(Int) -> Int Array[Int] Point
-    #|Map[K, V] Int
-  let ctx = Context::new(code)
-  ctx..tokenize()
-  let { tokens, .. } = ctx
-  let (ty, tok_view) = ctx.parse_type(tokens[:])
-  assert_true(ty is { kind: Unit, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Int, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Int64, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Bool, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: UInt, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: UInt64, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Float, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Double, .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Tuple(_), .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Function(_), .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Array(_), .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Defined(_), .. })
-  let (ty, tok_view) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Defined(_), .. })
-  let (ty, _) = ctx.parse_type(tok_view)
-  assert_true(ty is { kind: Int, .. })
-}
 
 ///|
+///
+/// Ast - Param
+///
+/// ```mbt
+/// let code = "a: Int"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (param, _) = ctx.parse_param(toks)
+///
+/// assert_true(param is {name: "a", ty: {kind: Int, ..}, ..})
+/// ```
 pub struct Param {
   lineno : Int
   column : Int
@@ -421,73 +430,568 @@ pub fn Context::parse_param(
 }
 
 ///|
-test "Param Parsing" {
-  let code =
-    #|a: Int b: Float
-    #|c: Double foo: String 
-    #|arr: Array[Double]
-    #|map: Map[String, Int]
-  let ctx = Context::new(code)
-  ctx..tokenize()
-  let { tokens, .. } = ctx
-  let (param, tok_view) = ctx.parse_param(tokens[:])
-  assert_true(param is { name: "a", ty: { kind: Int, .. }, .. })
-  let (param, tok_view) = ctx.parse_param(tok_view)
-  assert_true(param is { name: "b", ty: { kind: Float, .. }, .. })
-  let (param, tok_view) = ctx.parse_param(tok_view)
-  assert_true(param is { name: "c", ty: { kind: Double, .. }, .. })
-  let (param, tok_view) = ctx.parse_param(tok_view)
-  assert_true(param is { name: "foo", ty: { kind: String, .. }, .. })
-  let (param, tok_view) = ctx.parse_param(tok_view)
-  assert_true(
-    param is { name: "arr", ty: { kind: Array({ kind: Double, .. }), .. }, .. },
-  )
-  let (param, _) = ctx.parse_param(tok_view)
-  assert_true(param.name is "map")
-  assert_true(
-    param.ty.kind is Defined("Map", [{ kind: String, .. }, { kind: Int, .. }]),
-  )
+///
+/// Ast - Param List
+///
+/// ```mbt
+/// let code = "(a: Int, b: Float, c: Double,)"
+/// let ctx = Context::new(code)
+/// ctx..tokenize()
+/// let { tokens, .. } = ctx
+/// guard tokens is [{kind: Bracket('('), ..}, ..tokens]
+/// let (params, tok_view) = ctx.parse_param_list(tokens)
+/// assert_true(params.length() is 3)
+/// assert_true(params[0] is {name: "a", ty: {kind: Int, ..}, ..})
+/// assert_true(params[1] is {name: "b", ty: {kind: Float, ..}, ..})
+/// assert_true(params[2] is {name: "c", ty: {kind: Double, ..}, ..})
+/// assert_true(tok_view is [{kind: Bracket(')'), ..}, ..])
+/// ```
+pub fn Context::parse_param_list(self: Self, tokens: ArrayView[Token]) -> (Array[Param], ArrayView[Token]) raise ParseError {
+  let params: Array[Param] = Array::new()
+  let tokens = loop tokens {
+    [{kind: Lower(_), ..}, ..] as tokens => {
+      let (param, rest) = self.parse_param(tokens)
+      params.push(param)
+      continue rest
+    }
+    [{kind: Comma, ..}, {kind: Lower(_), ..}, ..] as tokens => {
+      let (param, rest) = self.parse_param(tokens[1:])
+      params.push(param)
+      continue rest
+    }
+    [{kind: Comma, ..}, {kind: Bracket(')'), ..}, ..] as tokens => {
+      break tokens[1:]
+    }
+    [{kind: Bracket(')'), ..}, ..] as tokens => {
+      break tokens
+    }
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tok => raise ParseError((tok[0], "InValid Param List Parsing"))
+  }
+  (params, tokens)
 }
 
 ///|
-// pub struct ExternFunction {
-//   // Location Infomation
-//   // Start from
-//   lineno: Int
-//   column: Int
-//   // End to
-//   end_lineno: Int
-//   end_column: Int
-//
-//   // fname and ffi_name
-//   // in code like: extern fn sin(x: Float) -> Float = "sinf"
-//   // sin is fname, sinf is ffi_name
-//   fname: String
-//   ffi_name: String
-//
-//   // param list
-//   params: Array[Param]
-// }
-//
-// pub fn Context::parse_extern_function(
-//   self: Self,
-//   tokens: ArrayView[Token]
-// ) -> (ExternFunction, ArrayView[Token]) raise ParseError {
-//
-//   guard tokens is [{kind: Keyword(Extern), ..}, ..tokens] else {
-//     println("Compiler ICE: extern function should start with extern")
-//     panic()
-//   }
-//
-//   guard tokens is [{kind: Keyword(Fn),..},..tokens] else {
-//     raise ParseError((tokens[0], "Parse Error, expect \"fn\"."))
-//   }
-//
-//   guard tokens is [{kind: Lower(fname), ..}, .. tokens] else {
-//     raise ParseError((tokens[0], "Parse Error, expect a lower ident."))
-//   }
-//
-//   guard tokens is [{kind: Bracket('('), ..}, ..tokens] else {
-//     raise ParseError((tokens[0], "Parse Error, expect left parenthesis '('"))
-//   }
-// }
+///
+/// Ast - Extern Function
+///
+/// ```mbt
+/// let code = "extern fn sin(x: Float) -> Float = \"sinf\";"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (extern_fn, _) = ctx.parse_extern_function(toks)
+///
+/// assert_true(extern_fn is {
+///   fname: "sin",
+///   ffi_name: "sinf",
+///   params: [{name: "x", ty: {kind: Float, ..}, ..}],
+///   ret_ty: {kind: Float, ..},
+///   ..
+/// })
+/// ```
+pub struct ExternFunction {
+  // Location Infomation
+  // Start from
+  lineno: Int
+  column: Int
+  // End to
+  end_lineno: Int
+  end_column: Int
+
+  // fname and ffi_name
+  // in code like: extern fn sin(x: Float) -> Float = "sinf"
+  // sin is fname, sinf is ffi_name
+  fname: String
+  ffi_name: String
+
+  // param list
+  params: Array[Param]
+  ret_ty: Type
+}
+
+///|
+pub fn Context::parse_extern_function(
+  self: Self,
+  tokens: ArrayView[Token]
+) -> (ExternFunction, ArrayView[Token]) raise ParseError {
+
+  guard tokens is [{kind: Keyword(Extern), ..}, ..tokens] else {
+    println("Compiler ICE: extern function should start with extern")
+    panic()
+  }
+
+  guard tokens is [{kind: Keyword(Fn),..},..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect \"fn\"."))
+  }
+
+  guard tokens is [{kind: Lower(fname), ..}, .. tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect a lower ident."))
+  }
+
+  guard tokens is [{kind: Bracket('('), ..}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect left parenthesis '('"))
+  }
+
+  let (params, tokens) = self.parse_param_list(tokens)
+  guard tokens is [{kind: Bracket(')'), ..}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect right parenthesis ')'"))
+  }
+
+  guard tokens is [{kind: RightArrow, ..}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect '->'"))
+  }
+
+  let (ret_ty, tokens) = self.parse_type(tokens)
+
+  guard tokens is [{kind: AssignOp(Assign), ..}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect '='"))
+  }
+
+  guard tokens is [{kind: String(ffi_name), lineno, column}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect a string literal"))
+  }
+
+  guard tokens is [{kind: SemiColon, lineno: end_lineno, column:end_column}, ..tokens] else {
+    raise ParseError((tokens[0], "Parse Error, expect ';'"))
+  }
+
+  let extern_fn = ExternFunction::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    fname,
+    ffi_name,
+    params,
+    ret_ty
+  }
+  (extern_fn, tokens)
+}
+
+///|
+pub struct TopLet {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type?
+  expr : Expr
+}
+
+pub struct Expr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty: Type?
+  kind : ExprKind
+} derive(Show, Eq)
+
+pub fn Context::parse_expr(self: Self, tokens: ArrayView[Token]) -> (Expr, ArrayView[Token]) raise ParseError {
+  guard tokens is [tok, ..tokens] else {
+    println("Compiler ICE: Empty Token ArrayView")
+    panic()
+  }
+
+  match tok.kind {
+    Keyword(If) => {
+      let (if_expr, rest) = self.parse_if_expr(tokens)
+      let expr = Expr::{
+        lineno: if_expr.lineno,
+        column: if_expr.column,
+        end_lineno: if_expr.end_lineno,
+        end_column: if_expr.end_column,
+        ty: None,
+        kind: ExprKind::IfExpr(if_expr)
+      }
+      return (expr, rest)
+    }
+    Bracket('{') => {
+      let (block, rest) = self.parse_block_expr(tokens)
+      let expr = Expr::{
+        lineno: block.lineno,
+        column: block.column,
+        end_lineno: block.end_lineno,
+        end_column: block.end_column,
+        ty: None,
+        kind: ExprKind::BlockExpr(block)
+      }
+      return (expr, rest)
+    }
+    _ => ()
+  }
+
+  ...
+
+  //let op_stack: @deque.Deque[BinaryOp] = @deque.Deque::new()
+  //let expr_stack: @deque.Deque[Expr] = @deque.Deque::new()
+  //
+  //let (apply_expr, tokens) = self.parse_apply_expr(tokens)
+  //let head_expr = Expr::{
+  //  lineno: apply_expr.lineno,
+  //  column: apply_expr.column,
+  //  end_lineno: apply_expr.end_lineno,
+  //  end_column: apply_expr.end_column,
+  //  ty: apply_expr.ty,
+  //  kind: ExprKind::ApplyExpr(apply_expr)
+  //}
+  //
+  //expr_stack.push_back(head_expr)
+  //loop tokens {
+  //}
+}
+
+pub enum ExprKind {
+  ApplyExpr(ApplyExpr)
+  BlockExpr(BlockExpr)
+  BinaryExpr(BinaryOp, Expr, Expr)
+  IfExpr(IfExpr)
+  //MatchExpr(MatchExpr)
+} derive(Show, Eq)
+
+pub struct IfExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  cond : Expr
+  then_block : BlockExpr
+  else_block : @either.Either[IfExpr, BlockExpr]?
+} derive(Show, Eq)
+
+pub fn Context::parse_if_expr(self: Self, tokens: ArrayView[Token]) -> (IfExpr, ArrayView[Token]) raise ParseError {
+  guard tokens is [{kind: Keyword(If), lineno, column}, ..tokens] else {
+    println("Compiler ICE: Misuse parse_if_expr")
+    panic()
+  }
+
+  let (cond, tokens) = self.parse_expr(tokens)
+
+  let (then_block, tokens) = self.parse_block_expr(tokens)
+
+  let (else_block, tokens) = if tokens is [{kind: Keyword(Else), ..}, ..tokens] {
+    if tokens is [{kind: Keyword(If), ..}, ..] {
+      let (else_if, tokens) = self.parse_if_expr(tokens)
+      (Some(@either.Either::Left(else_if)), tokens)
+    } else {
+      guard tokens is [{kind: Bracket('{'), ..}, ..] else {
+        raise ParseError((tokens[1], "Expect '{' after else"))
+      }
+      let (else_block, tokens) = self.parse_block_expr(tokens[1:])
+      (Some(@either.Either::Right(else_block)), tokens)
+    }
+  } else {
+    (None, tokens)
+  }
+
+  let if_expr = IfExpr::{
+    lineno,
+    column,
+    end_lineno: else_block.map_or(then_block.end_lineno, eb => match eb {
+      @either.Either::Left(ie) => ie.end_lineno
+      @either.Either::Right(be) => be.end_lineno
+    }),
+    end_column: else_block.map_or(then_block.end_column, eb => match eb {
+      @either.Either::Left(ie) => ie.end_column
+      @either.Either::Right(be) => be.end_column
+    }),
+    cond,
+    then_block,
+    else_block
+  }
+
+  (if_expr, tokens)
+}
+
+pub struct BlockExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  stmts : Array[Stmt]
+  expr : Expr?
+} derive(Show, Eq)
+
+pub fn Context::parse_block_expr(self: Self, tokens: ArrayView[Token]) -> (BlockExpr, ArrayView[Token]) raise ParseError {
+  guard tokens is [{kind: Bracket('{'), lineno, column}, ..tokens] else {
+    println("Compiler ICE: Misuse parse_block_expr")
+    panic()
+  }
+
+  let stmts: Array[Stmt] = Array::new()
+  let (tokens, end_lineno, end_column) = loop tokens[1:] {
+    [{kind: Bracket('}'), lineno, column}, ..rest] =>
+      break (rest, lineno, column)
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => {
+      let (stmt, rest) = self.parse_stmt(tokens)
+      stmts.push(stmt)
+      continue rest
+    }
+  }
+
+  let block_expr = BlockExpr::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    stmts,
+    expr: None
+  }
+
+  (block_expr, tokens)
+}
+
+pub enum BinaryOp {
+  Add; Sub; Mul; Div; Rem; Shl; Shr;
+  Eq; Ne; Gt; Lt; Ge; Le;
+} derive(Show, Eq)
+
+pub struct ApplyExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty: Type?
+  kind : ApplyExprKind
+} derive(Show, Eq)
+
+pub enum ApplyExprKind {
+  AtomExpr(AtomExpr)
+  ArrayAccess(ApplyExpr, Expr)
+  TupleAccess(ApplyExpr, Int)
+  Call(ApplyExpr, Array[Expr])
+} derive(Show, Eq)
+
+
+pub struct AtomExpr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty: TypeKind?
+  kind : AtomExprKind
+} derive(Show, Eq)
+
+pub enum AtomExprKind {
+  Int(Int)
+  Int64(Int64)
+  UInt(UInt)
+  UInt64(UInt64)
+  Float(Float)
+  Double(Double)
+  Bool(Bool)
+  String(String)
+  Ident(String)
+  Unit
+  Paren(Expr)
+  Tuple(Array[Expr])
+  Array(Array[Expr])
+  //MatchExpr(MatchExpr)
+} derive(Show, Eq)
+
+pub fn Context::parse_atom_expr(self: Self, tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError {
+  match tokens {
+    [{kind: Int(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(Int),
+        kind: AtomExprKind::Int(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Int64(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(Int64),
+        kind: AtomExprKind::Int64(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: UInt(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(UInt),
+        kind: AtomExprKind::UInt(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: UInt64(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(UInt64),
+        kind: AtomExprKind::UInt64(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Float(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(Float),
+        kind: AtomExprKind::Float(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Double(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(Double),
+        kind: AtomExprKind::Double(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Bool(v), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(Bool),
+        kind: AtomExprKind::Bool(v)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: String(ident), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: Some(String),
+        kind: AtomExprKind::String(ident)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Lower(ident), lineno, column}, ..] => {
+      let expr = AtomExpr::{
+        lineno,
+        column,
+        end_lineno: lineno,
+        end_column: column,
+        ty: None,
+        kind: AtomExprKind::Ident(ident)
+      }
+      (expr, tokens[1:])
+    }
+    [{kind: Bracket('('), ..}, ..] => self.parse_paren_or_tuple_expr(tokens)
+    [{kind: Bracket('['), ..}, ..] => self.parse_array_expr(tokens)
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    _ => raise ParseError((tokens[0], "InValid Atom Expression"))
+  }
+}
+
+fn Context::parse_paren_or_tuple_expr(self: Self, tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError {
+  ...
+}
+
+fn Context::parse_array_expr(self: Self, tokens: ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError {
+  ...
+}
+
+pub struct Stmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : StmtKind
+} derive(Show, Eq)
+
+pub enum StmtKind {
+  LetStmt(LetStmt)
+  LetMutStmt(LetMutStmt)
+  AssignStmt(AssignStmt)
+  WhileStmt(WhileStmt)
+  ForStmt(ForStmt)
+} derive(Show, Eq)
+
+pub fn Context::parse_stmt(self: Self, tokens: ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise ParseError {
+  ...
+}
+
+pub struct LetStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  pattern : Pattern
+  ty : Type?
+  expr : Expr
+} derive(Show, Eq)
+
+pub struct LetMutStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type?
+  expr : Expr
+} derive(Show, Eq)
+
+pub struct AssignStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  op : AssignOp
+  expr : Expr
+} derive(Show, Eq)
+
+pub struct WhileStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  cond : Expr
+  body : BlockExpr
+} derive(Show, Eq)
+
+pub struct ForStmt {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  init : Stmt?
+  cond : Expr?
+  step : Stmt?
+  body : BlockExpr
+} derive(Show, Eq)
+
+pub enum Pattern {
+  WildCard
+  Ident(String)
+  Tuple(Array[Pattern])
+  //EnumPattern(String, Array[Pattern])
+} derive(Show, Eq)
+

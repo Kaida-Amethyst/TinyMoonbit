@@ -1,5 +1,6 @@
 {
   "import": [
-    "Kaida-Amethyst/MoonLLVM/IR"
+    "Kaida-Amethyst/MoonLLVM/IR",
+    "Kaida-Amethyst/either"
   ]
 }
