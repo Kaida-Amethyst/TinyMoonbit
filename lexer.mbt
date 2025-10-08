@@ -18,7 +18,7 @@ pub enum Keyword {
 } derive(Show, Eq)
 
 ///|
-pub enum Operator {
+pub enum BinaryOp {
   Plus // +
   Minus // -
   Mult // *
@@ -36,8 +36,21 @@ pub enum Operator {
   Or // ||
   BitAnd // &
   BitOr // |
-  Not // !
 } derive(Show, Eq)
+
+fn BinaryOp::precedence(self : Self) -> Int {
+  match self {
+    Or => 1
+    And => 2
+    BitOr => 3
+    BitAnd => 4
+    Eq | NE => 5
+    LT | GT | LE | GE => 6
+    ShiftLeft | ShiftRight => 7
+    Plus | Minus => 8
+    Mult | Div | Mod => 9
+  }
+}
 
 ///|
 pub enum AssignOp {
@@ -74,8 +87,9 @@ pub enum TokenKind {
   Keyword(Keyword)
   Upper(String)
   Lower(String)
-  Operator(Operator) // +, -, *, /, %, =, ==, !=, <, >, <=, >=, &&, ||
+  BinaryOp(BinaryOp) // +, -, *, /, %, =, ==, !=, <, >, <=, >=, &&, ||
   AssignOp(AssignOp) // =, +=, -=, *=, /=, %=
+  Not // !
   Bracket(Char) // (, ), [, ], {, }
   Dot // .
   Comma
@@ -137,49 +151,49 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       continue rest
     }
     [.. "!=", .. rest] => {
-      let tok = Token::new(Operator(NE), line, column)
+      let tok = Token::new(BinaryOp(NE), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "==", .. rest] => {
-      let tok = Token::new(Operator(Eq), line, column)
+      let tok = Token::new(BinaryOp(Eq), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "<=", .. rest] => {
-      let tok = Token::new(Operator(LE), line, column)
+      let tok = Token::new(BinaryOp(LE), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. ">=", .. rest] => {
-      let tok = Token::new(Operator(GE), line, column)
+      let tok = Token::new(BinaryOp(GE), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "&&", .. rest] => {
-      let tok = Token::new(Operator(And), line, column)
+      let tok = Token::new(BinaryOp(And), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "||", .. rest] => {
-      let tok = Token::new(Operator(Or), line, column)
+      let tok = Token::new(BinaryOp(Or), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. "<<", .. rest] => {
-      let tok = Token::new(Operator(ShiftLeft), line, column)
+      let tok = Token::new(BinaryOp(ShiftLeft), line, column)
       tokens.push(tok)
       column += 2
       continue rest
     }
     [.. ">>", .. rest] => {
-      let tok = Token::new(Operator(ShiftRight), line, column)
+      let tok = Token::new(BinaryOp(ShiftRight), line, column)
       tokens.push(tok)
       column += 2
       continue rest
@@ -215,55 +229,55 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       continue rest
     }
     ['+', .. rest] => {
-      let tok = Token::new(Operator(Plus), line, column)
+      let tok = Token::new(BinaryOp(Plus), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['-', .. rest] => {
-      let tok = Token::new(Operator(Minus), line, column)
+      let tok = Token::new(BinaryOp(Minus), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['*', .. rest] => {
-      let tok = Token::new(Operator(Mult), line, column)
+      let tok = Token::new(BinaryOp(Mult), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['/', .. rest] => {
-      let tok = Token::new(Operator(Div), line, column)
+      let tok = Token::new(BinaryOp(Div), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['%', .. rest] => {
-      let tok = Token::new(Operator(Mod), line, column)
+      let tok = Token::new(BinaryOp(Mod), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['&', .. rest] => {
-      let tok = Token::new(Operator(BitAnd), line, column)
+      let tok = Token::new(BinaryOp(BitAnd), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['|', .. rest] => {
-      let tok = Token::new(Operator(BitOr), line, column)
+      let tok = Token::new(BinaryOp(BitOr), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['<', .. rest] => {
-      let tok = Token::new(Operator(LT), line, column)
+      let tok = Token::new(BinaryOp(LT), line, column)
       tokens.push(tok)
       column += 1
       continue rest
     }
     ['>', .. rest] => {
-      let tok = Token::new(Operator(GT), line, column)
+      let tok = Token::new(BinaryOp(GT), line, column)
       tokens.push(tok)
       column += 1
       continue rest
@@ -275,7 +289,7 @@ pub fn Context::tokenize(self : Self) -> Unit raise TokenizeError {
       continue rest
     }
     ['!', .. rest] => {
-      let tok = Token::new(Operator(Not), line, column)
+      let tok = Token::new(Not, line, column)
       tokens.push(tok)
       column += 1
       continue rest
