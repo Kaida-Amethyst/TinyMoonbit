@@ -443,16 +443,9 @@ test "Param Parsing" {
     param is { name: "arr", ty: { kind: Array({ kind: Double, .. }), .. }, .. },
   )
   let (param, _) = ctx.parse_param(tok_view)
+  assert_true(param.name is "map")
   assert_true(
-    param
-    is {
-      name: "map",
-      ty: {
-        kind: Defined("Map", [{ kind: String, .. }, { kind: Int, .. }]),
-        ..,
-      },
-      ..,
-    },
+    param.ty.kind is Defined("Map", [{ kind: String, .. }, { kind: Int, .. }]),
   )
 }
 
