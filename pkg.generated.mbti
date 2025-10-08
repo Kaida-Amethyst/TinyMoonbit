@@ -21,7 +21,7 @@ pub struct ApplyExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : Type?
+  ty : TypeKind?
   kind : ApplyExprKind
 }
 impl Eq for ApplyExpr
@@ -30,6 +30,7 @@ impl Show for ApplyExpr
 pub enum ApplyExprKind {
   AtomExpr(AtomExpr)
   ArrayAccess(ApplyExpr, Expr)
+  FieldAccess(ApplyExpr, String)
   TupleAccess(ApplyExpr, Int)
   Call(ApplyExpr, Array[Expr])
 }
@@ -53,7 +54,7 @@ pub struct AssignStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  name : String
+  left_value : LeftValue
   op : AssignOp
   expr : Expr
 }
@@ -90,9 +91,9 @@ impl Eq for AtomExprKind
 impl Show for AtomExprKind
 
 pub(all) enum BinaryOp {
-  Plus
-  Minus
-  Mult
+  Add
+  Sub
+  Mul
   Div
   Mod
   ShiftLeft
@@ -116,6 +117,7 @@ pub struct BlockExpr {
   column : Int
   end_lineno : Int
   end_column : Int
+  ty : TypeKind?
   stmts : Array[Stmt]
   expr : Expr?
 }
@@ -137,12 +139,14 @@ fn Context::parse_expr(Self, ArrayView[Token]) -> (Expr, ArrayView[Token]) raise
 fn Context::parse_extern_function(Self, ArrayView[Token]) -> (ExternFunction, ArrayView[Token]) raise ParseError
 fn Context::parse_for_stmt(Self, ArrayView[Token]) -> (ForStmt, ArrayView[Token]) raise ParseError
 fn Context::parse_if_expr(Self, ArrayView[Token]) -> (IfExpr, ArrayView[Token]) raise ParseError
+fn Context::parse_left_value(Self, ArrayView[Token]) -> (LeftValue, ArrayView[Token]) raise ParseError
 fn Context::parse_let_mut_stmt(Self, ArrayView[Token]) -> (LetMutStmt, ArrayView[Token]) raise ParseError
 fn Context::parse_let_stmt(Self, ArrayView[Token]) -> (LetStmt, ArrayView[Token]) raise ParseError
 fn Context::parse_param(Self, ArrayView[Token]) -> (Param, ArrayView[Token]) raise ParseError
 fn Context::parse_param_list(Self, ArrayView[Token]) -> (Array[Param], ArrayView[Token]) raise ParseError
 fn Context::parse_pattern(Self, ArrayView[Token]) -> (Pattern, ArrayView[Token]) raise ParseError
 fn Context::parse_stmt(Self, ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise ParseError
+fn Context::parse_top_function(Self, ArrayView[Token]) -> (TopFunction, ArrayView[Token]) raise ParseError
 fn Context::parse_top_let(Self, ArrayView[Token]) -> (TopLet, ArrayView[Token]) raise ParseError
 fn Context::parse_type(Self, ArrayView[Token]) -> (Type, ArrayView[Token]) raise ParseError
 fn Context::parse_while_stmt(Self, ArrayView[Token]) -> (WhileStmt, ArrayView[Token]) raise ParseError
@@ -153,7 +157,7 @@ pub struct Expr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : Type?
+  ty : TypeKind?
   kind : ExprKind
 }
 impl Eq for Expr
@@ -184,9 +188,9 @@ pub struct ForStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  init : Stmt?
+  inits : Array[(String, Expr)]
   cond : Expr?
-  step : Stmt?
+  steps : Array[(String, AssignOp, Expr)]
   body : BlockExpr
 }
 impl Eq for ForStmt
@@ -197,6 +201,7 @@ pub struct IfExpr {
   column : Int
   end_lineno : Int
   end_column : Int
+  ty : TypeKind?
   cond : Expr
   then_block : BlockExpr
   else_block : @either.Either[IfExpr, BlockExpr]?
@@ -221,6 +226,70 @@ pub(all) enum Keyword {
 impl Eq for Keyword
 impl Show for Keyword
 
+pub(all) struct KnfBlock {
+  stmts : Array[KnfStmt]
+}
+
+pub(all) enum KnfExpr {
+  Int(Int)
+  UInt(UInt)
+  Int64(Int64)
+  UInt64(UInt64)
+  Float(Float)
+  Double(Double)
+  Bool(Bool)
+  String(String)
+  Ident(Name)
+  Binary(BinaryOp, Name, Name)
+  Not(Name)
+  Neg(Name)
+  Call(Name, Array[Name])
+  ArrayGet(Name, Name)
+  TupleGet(Name, Int)
+  ArrayLiteral(Array[Name], TypeKind)
+  TupleLiteral(Array[Name])
+}
+
+pub(all) struct KnfFunction {
+  name : String
+  ty : TypeKind
+  params : Array[KnfParam]
+  body : KnfBlock
+}
+
+pub(all) struct KnfParam {
+  name : String
+  ty : TypeKind
+}
+
+pub(all) enum KnfStmt {
+  Let(Name, String, TypeKind, KnfExpr)
+  LetMut(Name, Name, TypeKind, KnfExpr)
+  Assign(Name, KnfExpr)
+  ArrayPut(Name, Name, KnfExpr)
+  If(KnfExpr, KnfBlock, KnfBlock)
+  While(KnfExpr, KnfBlock)
+  ExprStmt(KnfExpr)
+}
+
+pub struct LeftValue {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  kind : LeftValueKind
+}
+impl Eq for LeftValue
+impl Show for LeftValue
+
+pub enum LeftValueKind {
+  Ident(String)
+  ArrayAccess(LeftValue, Expr)
+  FieldAccess(LeftValue, String)
+}
+impl Eq for LeftValueKind
+impl Show for LeftValueKind
+
 pub struct LetMutStmt {
   lineno : Int
   column : Int
@@ -244,6 +313,11 @@ pub struct LetStmt {
 }
 impl Eq for LetStmt
 impl Show for LetStmt
+
+pub struct Name {
+  id : String
+  slot : Int
+}
 
 pub struct Param {
   lineno : Int
@@ -290,6 +364,7 @@ pub enum StmtKind {
   AssignStmt(AssignStmt)
   WhileStmt(WhileStmt)
   ForStmt(ForStmt)
+  ExprStmt(Expr)
 }
 impl Eq for StmtKind
 impl Show for StmtKind
@@ -326,6 +401,7 @@ pub(all) enum TokenKind {
   SemiColon
   RightArrow
   FatRightArrow
+  Wildcard
   EOF
 }
 impl Eq for TokenKind
@@ -334,7 +410,12 @@ impl Show for TokenKind
 pub struct TopFunction {
   lineno : Int
   column : Int
+  end_lineno : Int
+  end_column : Int
   fname : String
+  param_list : Array[Param]
+  ret_type : Type
+  body : BlockExpr
 }
 
 pub struct TopLet {

@@ -82,15 +82,14 @@ test "Param List Parsing" {
   assert_true(tok_view is [{ kind: Bracket(')'), .. }, ..])
 }
 
+///|
 test "AtomExpr Parsing" {
-  let code = 
+  let code =
     #|42 3.14 true false "hello"
     #|foo bar
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
-
   let (a, tok_view) = ctx.parse_atom_expr(tokens[:])
   assert_true(a is { kind: Int(42), .. })
   let (a, tok_view) = ctx.parse_atom_expr(tok_view)
@@ -107,19 +106,18 @@ test "AtomExpr Parsing" {
   assert_true(a is { kind: Ident("bar"), .. })
 }
 
+///|
 test "ApplyExpr Parsing" {
-  let code = 
+  let code =
     #|42 true
     #|x y
     #|arr[1] vec[7]
     #|tup.2 pt.8
     #|obj.field list.next
     #|add(1, 2) fact(3)
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
-
   let (e, tok_view) = ctx.parse_apply_expr(tokens[:])
   assert_true(e.kind is AtomExpr(_))
   let (e, tok_view) = ctx.parse_apply_expr(tok_view)

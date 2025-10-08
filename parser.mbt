@@ -100,8 +100,6 @@
 /// match_item :=
 ///   pattern ("if" Expr)? "=>" Expr ";"
 
-
-
 ///|
 pub struct TopFunction {
   lineno : Int
@@ -109,11 +107,12 @@ pub struct TopFunction {
   end_lineno : Int
   end_column : Int
   fname : String
-  param_list: Array[Param]
-  ret_type: Type
-  body: BlockExpr
+  param_list : Array[Param]
+  ret_type : Type
+  body : BlockExpr
 }
 
+///|
 pub fn Context::parse_top_function(
   self : Self,
   tokens : ArrayView[Token],
@@ -667,7 +666,6 @@ pub fn Context::parse_top_let(
   (top_let, tokens)
 }
 
-
 ///|
 ///
 /// Ast - Expr
@@ -793,12 +791,16 @@ pub fn Context::parse_expr(
 }
 
 ///|
-fn Context::parse_expr_list(self: Self, tokens: ArrayView[Token]) -> (Array[Expr], ArrayView[Token]) raise ParseError {
-  let exprs: Array[Expr] = Array::new()
+fn Context::parse_expr_list(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (Array[Expr], ArrayView[Token]) raise ParseError {
+  let exprs : Array[Expr] = Array::new()
   let tokens = loop tokens {
     [{ kind: Bracket(')'), .. }, ..] as tokens => break tokens
-    [{ kind: Comma, .. }, { kind: Bracket(')'), .. }, ..] as tokens => break tokens[1:]
-    [{ kind: Comma, .. }, ..tokens] => {
+    [{ kind: Comma, .. }, { kind: Bracket(')'), .. }, ..] as tokens =>
+      break tokens[1:]
+    [{ kind: Comma, .. }, .. tokens] => {
       let (expr, rest) = self.parse_expr(tokens)
       exprs.push(expr)
       continue rest
@@ -831,7 +833,7 @@ pub struct IfExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty: TypeKind?
+  ty : TypeKind?
   cond : Expr
   then_block : BlockExpr
   else_block : @either.Either[IfExpr, BlockExpr]?
@@ -888,7 +890,7 @@ pub struct BlockExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty: TypeKind?
+  ty : TypeKind?
   stmts : Array[Stmt]
   expr : Expr?
 } derive(Show, Eq)
@@ -980,16 +982,14 @@ pub fn Context::parse_apply_expr(
     ty: atom_expr.ty,
     kind: ApplyExprKind::AtomExpr(atom_expr),
   }
-  if !(tokens is [{kind: Bracket('[') | Dot | Bracket('('), ..}, ..]) {
+  if !(tokens is [{ kind: Bracket('[') | Dot | Bracket('('), .. }, ..]) {
     return (apply_expr, tokens)
   }
-
   let mut apply_expr = apply_expr
-
   loop tokens {
-    [{ kind: Bracket('['), .. }, ..tokens] => {
+    [{ kind: Bracket('['), .. }, .. tokens] => {
       let (index_expr, tokens) = self.parse_expr(tokens)
-      guard tokens is [{ kind: Bracket(']'), lineno, column }, ..tokens] else {
+      guard tokens is [{ kind: Bracket(']'), lineno, column }, .. tokens] else {
         raise ParseError((tokens[0], "Expect ']'"))
       }
       apply_expr = ApplyExpr::{
@@ -1002,7 +1002,7 @@ pub fn Context::parse_apply_expr(
       }
       continue tokens
     }
-    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, ..tokens] => {
+    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, .. tokens] => {
       apply_expr = ApplyExpr::{
         lineno: apply_expr.lineno,
         column: apply_expr.column,
@@ -1013,7 +1013,7 @@ pub fn Context::parse_apply_expr(
       }
       continue tokens
     }
-    [{ kind: Dot, .. }, { kind: Int(idx), lineno, column }, ..tokens] => {
+    [{ kind: Dot, .. }, { kind: Int(idx), lineno, column }, .. tokens] => {
       apply_expr = ApplyExpr::{
         lineno: apply_expr.lineno,
         column: apply_expr.column,
@@ -1024,9 +1024,9 @@ pub fn Context::parse_apply_expr(
       }
       continue tokens
     }
-    [{ kind: Bracket('('), .. }, ..tokens] => {
+    [{ kind: Bracket('('), .. }, .. tokens] => {
       let (args, tokens) = self.parse_expr_list(tokens)
-      guard tokens is [{ kind: Bracket(')'), lineno, column }, ..tokens] else {
+      guard tokens is [{ kind: Bracket(')'), lineno, column }, .. tokens] else {
         raise ParseError((tokens[0], "Expect ')'"))
       }
       apply_expr = ApplyExpr::{
@@ -1345,7 +1345,7 @@ pub fn Context::parse_stmt(
     // check if it's followed by an assignment operator.
     [{ kind: Lower(_), .. }, ..] as tokens => {
       let (_, rest) = self.parse_left_value(tokens)
-      if rest is [{kind: AssignOp(_), ..}, ..] {
+      if rest is [{ kind: AssignOp(_), .. }, ..] {
         let (assign_stmt, rest) = self.parse_assign_stmt(tokens)
         let stmt = Stmt::{
           lineno: assign_stmt.lineno,
@@ -1481,7 +1481,12 @@ pub fn Context::parse_let_mut_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (LetMutStmt, ArrayView[Token]) raise ParseError {
-  guard tokens is [{ kind: Keyword(Let), lineno, column }, { kind: Keyword(Mut), .. }, .. tokens] else {
+  guard tokens
+    is [
+      { kind: Keyword(Let), lineno, column },
+      { kind: Keyword(Mut), .. },
+      .. tokens,
+    ] else {
     println("Compiler ICE: Misuse parse_let_mut_stmt")
     panic()
   }
@@ -1523,7 +1528,7 @@ pub struct AssignStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  left_value: LeftValue
+  left_value : LeftValue
   op : AssignOp
   expr : Expr
 } derive(Show, Eq)
@@ -1534,7 +1539,7 @@ pub fn Context::parse_assign_stmt(
   tokens : ArrayView[Token],
 ) -> (AssignStmt, ArrayView[Token]) raise ParseError {
   let (left_value, tokens) = self.parse_left_value(tokens)
-  guard tokens is [{ kind: AssignOp(op), .. }, ..tokens] else {
+  guard tokens is [{ kind: AssignOp(op), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect an assign operator"))
   }
   let (expr, tokens) = self.parse_expr(tokens)
@@ -1554,6 +1559,7 @@ pub fn Context::parse_assign_stmt(
   (assign_stmt, tokens)
 }
 
+///|
 pub struct LeftValue {
   lineno : Int
   column : Int
@@ -1562,12 +1568,12 @@ pub struct LeftValue {
   kind : LeftValueKind
 } derive(Show, Eq)
 
+///|
 pub enum LeftValueKind {
   Ident(String)
   ArrayAccess(LeftValue, Expr)
   FieldAccess(LeftValue, String)
 } derive(Show, Eq)
-
 
 ///|
 pub fn Context::parse_left_value(
@@ -1584,16 +1590,14 @@ pub fn Context::parse_left_value(
     end_column: column,
     kind: LeftValueKind::Ident(ident),
   }
-  if !(tokens is [{kind: Bracket('[') | Dot, ..}, ..]) {
+  if !(tokens is [{ kind: Bracket('[') | Dot, .. }, ..]) {
     return (left_value, tokens[1:])
   }
-
   let mut left_value = left_value
-
   loop tokens[1:] {
-    [{ kind: Bracket('['), .. }, ..tokens] => {
+    [{ kind: Bracket('['), .. }, .. tokens] => {
       let (index_expr, tokens) = self.parse_expr(tokens)
-      guard tokens is [{ kind: Bracket(']'), lineno, column }, ..tokens] else {
+      guard tokens is [{ kind: Bracket(']'), lineno, column }, .. tokens] else {
         raise ParseError((tokens[0], "Expect ']'"))
       }
       left_value = LeftValue::{
@@ -1605,7 +1609,7 @@ pub fn Context::parse_left_value(
       }
       continue tokens
     }
-    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, ..tokens] => {
+    [{ kind: Dot, .. }, { kind: Lower(field), lineno, column }, .. tokens] => {
       left_value = LeftValue::{
         lineno: left_value.lineno,
         column: left_value.column,
@@ -1681,8 +1685,9 @@ pub fn Context::parse_for_stmt(
       inits.push((name, expr))
       continue rest
     }
-    [{ kind: SemiColon, .. }, ..tokens] => break tokens
-    tokens => raise ParseError((tokens[0], "Invalid init statement in for loop"))
+    [{ kind: SemiColon, .. }, .. tokens] => break tokens
+    tokens =>
+      raise ParseError((tokens[0], "Invalid init statement in for loop"))
   }
   let (cond, tokens) = if tokens is [{ kind: SemiColon, .. }, .. tokens] {
     (None, tokens[1:])
@@ -1693,7 +1698,7 @@ pub fn Context::parse_for_stmt(
     }
     (Some(expr), tokens[1:])
   }
-  let steps: Array[(String, AssignOp, Expr)] = Array::new()
+  let steps : Array[(String, AssignOp, Expr)] = Array::new()
   let tokens = loop tokens {
     [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, ..] as tokens => {
       let (expr, rest) = self.parse_expr(tokens[2:])
@@ -1701,7 +1706,8 @@ pub fn Context::parse_for_stmt(
       continue rest
     }
     [{ kind: Bracket('{'), .. }, ..] as tokens => break tokens
-    tokens => raise ParseError((tokens[0], "Invalid step statement in for loop"))
+    tokens =>
+      raise ParseError((tokens[0], "Invalid step statement in for loop"))
   }
   let (body, tokens) = self.parse_block_expr(tokens)
   let for_stmt = ForStmt::{
@@ -1715,8 +1721,6 @@ pub fn Context::parse_for_stmt(
     body,
   }
   (for_stmt, tokens)
-
-
 }
 
 ///|
@@ -1741,7 +1745,7 @@ pub fn Context::parse_pattern(
   tokens : ArrayView[Token],
 ) -> (Pattern, ArrayView[Token]) raise ParseError {
   match tokens {
-    [{ kind: Wildcard, lineno, column }, ..tokens] => {
+    [{ kind: Wildcard, lineno, column }, .. tokens] => {
       let pattern = Pattern::{
         lineno,
         column,
@@ -1751,7 +1755,7 @@ pub fn Context::parse_pattern(
       }
       (pattern, tokens)
     }
-    [{ kind: Lower(ident), lineno, column }, ..tokens] => {
+    [{ kind: Lower(ident), lineno, column }, .. tokens] => {
       let pattern = Pattern::{
         lineno,
         column,
@@ -1761,25 +1765,23 @@ pub fn Context::parse_pattern(
       }
       (pattern, tokens)
     }
-    [{ kind: Bracket('('), lineno, column }, ..tokens] => {
+    [{ kind: Bracket('('), lineno, column }, .. tokens] => {
       let patterns : Array[Pattern] = Array::new()
       loop tokens {
-        [{kind: Bracket(')'), ..}, ..] => {
-          break 
-        }
-        [{kind: Lower(_) | Wildcard | Bracket('('), ..}, ..] as tokens=> {
+        [{ kind: Bracket(')'), .. }, ..] => break
+        [{ kind: Lower(_) | Wildcard | Bracket('('), .. }, ..] as tokens => {
           let (pat, rest) = self.parse_pattern(tokens)
           patterns.push(pat)
           continue rest
         }
-        tokens => {
-          raise ParseError((tokens[0], "InValid Pattern") )
-        }
+        tokens => raise ParseError((tokens[0], "InValid Pattern"))
       }
       let kind = if patterns.length() == 0 {
         raise ParseError((tokens[0], "InValid Pattern"))
       } else if patterns.length() == 1 {
-        raise ParseError((tokens[0], "InValid Pattern, must over 1 pattern for tuple"))
+        raise ParseError(
+          (tokens[0], "InValid Pattern, must over 1 pattern for tuple"),
+        )
       } else {
         PatternKind::Tuple(patterns)
       }

@@ -1,25 +1,29 @@
-
+///|
 pub struct Name {
-  id: String
-  slot: Int
+  id : String
+  slot : Int
 }
 
+///|
 pub(all) struct KnfFunction {
-  name: String
-  ty: TypeKind
-  params: Array[KnfParam]
-  body: KnfBlock
+  name : String
+  ty : TypeKind
+  params : Array[KnfParam]
+  body : KnfBlock
 }
 
+///|
 pub(all) struct KnfParam {
-  name: String
-  ty: TypeKind
+  name : String
+  ty : TypeKind
 }
 
+///|
 pub(all) struct KnfBlock {
-  stmts: Array[KnfStmt]
+  stmts : Array[KnfStmt]
 }
 
+///|
 pub(all) enum KnfStmt {
   Let(Name, String, TypeKind, KnfExpr)
   LetMut(Name, Name, TypeKind, KnfExpr)
@@ -31,6 +35,7 @@ pub(all) enum KnfStmt {
   ExprStmt(KnfExpr)
 }
 
+///|
 pub(all) enum KnfExpr {
   Int(Int)
   UInt(UInt)
