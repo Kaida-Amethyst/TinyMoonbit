@@ -99,13 +99,57 @@
 ///
 /// match_item :=
 ///   pattern ("if" Expr)? "=>" Expr ";"
+
+
+
+///|
 pub struct TopFunction {
   lineno : Int
   column : Int
+  end_lineno : Int
+  end_column : Int
   fname : String
-  // param_list: Array[Param]
-  // ret_type: Type
-  // stmts: Array[Stmt]
+  param_list: Array[Param]
+  ret_type: Type
+  body: BlockExpr
+}
+
+pub fn Context::parse_top_function(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (TopFunction, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Keyword(Fn), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_top_function")
+    panic()
+  }
+  guard tokens is [{ kind: Lower(fname), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect a lower ident"))
+  }
+  guard tokens is [{ kind: Bracket('('), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect '('"))
+  }
+  let (param_list, tokens) = self.parse_param_list(tokens)
+  guard tokens is [{ kind: Bracket(')'), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect ')'"))
+  }
+  guard tokens is [{ kind: RightArrow, .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect '->'"))
+  }
+  let (ret_type, tokens) = self.parse_type(tokens)
+  let (body, tokens) = self.parse_block_expr(tokens)
+  let end_lineno = body.end_lineno
+  let end_column = body.end_column
+  let top_function = TopFunction::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    fname,
+    param_list,
+    ret_type,
+    body,
+  }
+  (top_function, tokens)
 }
 
 ///|
@@ -1589,7 +1633,21 @@ pub fn Context::parse_while_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (WhileStmt, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Keyword(While), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_while_stmt")
+    panic()
+  }
+  let (cond, tokens) = self.parse_expr(tokens)
+  let (body, tokens) = self.parse_block_expr(tokens)
+  let while_stmt = WhileStmt::{
+    lineno,
+    column,
+    end_lineno: body.end_lineno,
+    end_column: body.end_column,
+    cond,
+    body,
+  }
+  (while_stmt, tokens)
 }
 
 ///|
@@ -1598,18 +1656,66 @@ pub struct ForStmt {
   column : Int
   end_lineno : Int
   end_column : Int
-  init : Array[(String, Expr)]?
+  inits : Array[(String, Expr)]
   cond : Expr?
-  step : Array[(String, AssignOp, Expr)]?
+  steps : Array[(String, AssignOp, Expr)]
   body : BlockExpr
 } derive(Show, Eq)
 
 ///|
+///
+/// Ast - For Statement
 pub fn Context::parse_for_stmt(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (ForStmt, ArrayView[Token]) raise ParseError {
-  ...
+  guard tokens is [{ kind: Keyword(For), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_for_stmt")
+    panic()
+  }
+  let inits : Array[(String, Expr)] = Array::new()
+  let tokens = loop tokens {
+    [{ kind: Lower(name), .. }, { kind: AssignOp(Assign), .. }, ..] as tokens => {
+      let (expr, rest) = self.parse_expr(tokens[2:])
+      inits.push((name, expr))
+      continue rest
+    }
+    [{ kind: SemiColon, .. }, ..tokens] => break tokens
+    tokens => raise ParseError((tokens[0], "Invalid init statement in for loop"))
+  }
+  let (cond, tokens) = if tokens is [{ kind: SemiColon, .. }, .. tokens] {
+    (None, tokens[1:])
+  } else {
+    let (expr, tokens) = self.parse_expr(tokens)
+    guard tokens is [{ kind: SemiColon, .. }, .. tokens] else {
+      raise ParseError((tokens[0], "Expect ';'"))
+    }
+    (Some(expr), tokens[1:])
+  }
+  let steps: Array[(String, AssignOp, Expr)] = Array::new()
+  let tokens = loop tokens {
+    [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, ..] as tokens => {
+      let (expr, rest) = self.parse_expr(tokens[2:])
+      steps.push((name, op, expr))
+      continue rest
+    }
+    [{ kind: Bracket('{'), .. }, ..] as tokens => break tokens
+    tokens => raise ParseError((tokens[0], "Invalid step statement in for loop"))
+  }
+  let (body, tokens) = self.parse_block_expr(tokens)
+  let for_stmt = ForStmt::{
+    lineno,
+    column,
+    end_lineno: body.end_lineno,
+    end_column: body.end_column,
+    inits,
+    cond,
+    steps,
+    body,
+  }
+  (for_stmt, tokens)
+
+
 }
 
 ///|
