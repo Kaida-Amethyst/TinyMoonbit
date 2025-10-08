@@ -667,15 +667,6 @@ pub fn Context::parse_top_let(
   (top_let, tokens)
 }
 
-///|
-pub struct Expr {
-  lineno : Int
-  column : Int
-  end_lineno : Int
-  end_column : Int
-  ty : TypeKind?
-  kind : ExprKind
-} derive(Show, Eq)
 
 ///|
 ///
@@ -696,6 +687,16 @@ pub struct Expr {
 ///   e4.kind is ApplyExpr(_)
 /// )
 /// ```
+pub struct Expr {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  ty : TypeKind?
+  kind : ExprKind
+} derive(Show, Eq)
+
+///|
 pub fn Context::parse_expr(
   self : Self,
   tokens : ArrayView[Token],
