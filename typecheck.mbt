@@ -55,6 +55,9 @@ pub fn Context::typecheck_function(self: Self, func: TopFunction) -> Unit raise 
   }
 
   let ty = self.type_check_block(body)
+  guard ty == func.ret_ty.kind else {
+    raise TypeCheckError("function return type mismatch: expected \{func.ret_ty.kind}, got \{ty}")
+  }
 
   self.pop_env()
 }
@@ -180,62 +183,223 @@ pub fn Context::type_check_apply_expr(self: Self, apply_expr: ApplyExpr) -> Type
 }
 
 pub fn Context::type_check_atom_expr(self: Self, atom: AtomExpr) -> TypeKind raise TypeCheckError {
-  ...
-  //match atom.kind {
-  //  Int(_) => TypeKind::Int
-  //  Int64(_) => TypeKind::Int64
-  //  UInt(_) => TypeKind::UInt
-  //  UInt64(_) => TypeKind::UInt64
-  //  Float(_) => TypeKind::Float
-  //  Double(_) => TypeKind::Double
-  //  Bool(_) => TypeKind::Bool
-  //  String(_) => TypeKind::String
-  //  Ident(name) => {
-  //    guard self.get_ident_type(name) is Some(ty) else {
-  //      raise TypeCheckError("undefined variable: \{name}")
-  //    }
-  //    ty
-  //  }
-  //  Parent(expr) => self.type_check_expr(expr)
-  //  Tuple(exprs) => {
-  //    let elem_tys = exprs.map(e => self.type_check_expr(e))
-  //    TypeKind::Tuple(elem_tys)
-  //  }
-  //}
+  let ty = match atom.kind {
+    Unit => TypeKind::Unit
+    Int(_) => TypeKind::Int
+    Int64(_) => TypeKind::Int64
+    UInt(_) => TypeKind::UInt
+    UInt64(_) => TypeKind::UInt64
+    Float(_) => TypeKind::Float
+    Double(_) => TypeKind::Double
+    Bool(_) => TypeKind::Bool
+    String(_) => TypeKind::String
+    Ident(name) => {
+      guard self.get_ident_type(name) is Some(ty) else {
+        raise TypeCheckError("undefined variable: \{name}")
+      }
+      ty
+    }
+    Paren(expr) => self.type_check_expr(expr)
+    Tuple(exprs) => {
+      let elem_tys = exprs.map(e => self.type_check_expr(e))
+      TypeKind::Tuple(elem_tys)
+    }
+    Array(exprs) => {
+      guard exprs.length() > 0 else {
+        raise TypeCheckError("Array at least has one element")
+      }
+      let first_ty = self.type_check_expr(exprs[0])
+      for e in exprs[1:] {
+        let e_ty = self.type_check_expr(e)
+        guard e_ty == first_ty else {
+          raise TypeCheckError("type mismatch in array elements: expected \{first_ty}, got \{e_ty}")
+        }
+      }
+      TypeKind::Array(first_ty)
+    }
+  }
+  atom.ty = Some(ty)
+  ty
 }
 
 pub fn Context::type_check_array_access_expr(self: Self, array: ApplyExpr, index: Expr) -> TypeKind raise TypeCheckError {
-  ...
+  let array_ty = self.type_check_apply_expr(array)
+  guard array_ty is TypeKind::Array(elem_ty) else {
+    raise TypeCheckError("type mismatch: expected array type, got \{array_ty}")
+  }
+  let index_ty = self.type_check_expr(index)
+  guard index_ty is Int else {
+    raise TypeCheckError("array index must be an integer type, got \{index_ty}")
+  }
+  elem_ty
 }
 
+// TODO: implement field access type checking when structs are supported
 pub fn Context::type_check_field_access_expr(self: Self, obj: ApplyExpr, field: String) -> TypeKind raise TypeCheckError {
+  ignore(obj);
+  ignore(field);
   ...
 }
 
 pub fn Context::type_check_tuple_access_expr(self: Self, obj: ApplyExpr, index: Int) -> TypeKind raise TypeCheckError {
-  ...
+  let obj_ty = self.type_check_apply_expr(obj)
+  guard obj_ty is TypeKind::Tuple(elem_tys) else {
+    raise TypeCheckError("type mismatch: expected tuple type, got \{obj_ty}")
+  }
+  guard index >= 0 && index < elem_tys.length() else {
+    raise TypeCheckError("tuple index out of bounds: index \{index}, length \{elem_tys.length()}")
+  }
+  elem_tys[index]
 }
 
 pub fn Context::type_check_func_call_expr(self: Self, f: ApplyExpr, args: Array[Expr]) -> TypeKind raise TypeCheckError {
-  ...
+  let f_ty = self.type_check_apply_expr(f)
+  guard f_ty is TypeKind::Function(param_tys, ret_ty) else {
+    raise TypeCheckError("type mismatch: expected function type, got \{f_ty}")
+  }
+  guard param_tys.length() == args.length() else {
+    raise TypeCheckError("argument length mismatch: expected \{param_tys.length()}, got \{args.length()}")
+  }
+  for i in 0 ..< args.length() {
+    let arg_ty = self.type_check_expr(args[i])
+    guard arg_ty == param_tys[i] else {
+      raise TypeCheckError("argument type mismatch at position \{i}: expected \{param_tys[i]}, got \{arg_ty}")
+    }
+  }
+  ret_ty
 }
 
 pub fn Context::type_check_if_expr(self: Self, if_expr: IfExpr) -> TypeKind raise TypeCheckError {
-  ...
+  let { cond, then_block, else_block, .. } = if_expr
+  let cond_ty = self.type_check_expr(cond)
+  guard cond_ty is Bool else {
+    raise TypeCheckError("if condition must be of type Bool, got \{cond_ty}")
+  }
+  let then_ty = self.type_check_block(then_block)
+  let ty = match else_block {
+    Some(e) => match e {
+      Left(elif) => { 
+        let elif_ty = self.type_check_if_expr(elif)
+        guard then_ty == elif_ty else {
+          raise TypeCheckError("type mismatch in if-else branches: then is \{then_ty}, else-if is \{elif_ty}")
+        }
+        elif_ty
+      }
+      Right(else_blk) => {
+        let else_blk_ty = self.type_check_block(else_blk)
+        guard then_ty == else_blk_ty else {
+          raise TypeCheckError("type mismatch in if-else branches: then is \{then_ty}, else is \{else_blk_ty}")
+        }
+        else_blk_ty
+      }
+    }
+    None => TypeKind::Unit
+  }
+  if_expr.ty = Some(ty)
+  ty
 }
 
 pub fn Context::type_check_assign_stmt(self: Self, assign_stmt: AssignStmt) -> Unit raise TypeCheckError {
-  ...
+  let { left_value, expr, .. } = assign_stmt
+  let left_ty = self.type_check_left_value(left_value)
+  let expr_ty = self.type_check_expr(expr)
+  guard left_ty == expr_ty else {
+    raise TypeCheckError("type mismatch in assignment: left is \{left_ty}, right is \{expr_ty}")
+  }
+  ()
+}
+
+pub fn Context::type_check_left_value(self: Self, lv: LeftValue) -> TypeKind raise TypeCheckError {
+  match lv.kind {
+    Ident(name) => {
+      guard self.get_ident_type(name) is Some(ty) else {
+        raise TypeCheckError("undefined variable in left value: \{name}")
+      }
+      ty
+    }
+    ArrayAccess(a, idx) => {
+      let a_ty = self.type_check_left_value(a)
+      guard a_ty is TypeKind::Array(elem_ty) else {
+        raise TypeCheckError("type mismatch in left value: expected array type, got \{a_ty}")
+      }
+      let idx_ty = self.type_check_expr(idx)
+      guard idx_ty is Int else {
+        raise TypeCheckError("array index must be an integer type, got \{idx_ty}")
+      }
+      elem_ty
+    }
+    FieldAccess(obj, field) => {
+      ignore(obj);
+      ignore(field);
+      ...
+    }
+  }
 }
 
 pub fn Context::type_check_while_stmt(self: Self, while_stmt: WhileStmt) -> Unit raise TypeCheckError {
-  ...
+  let { cond, body, .. } = while_stmt
+  let cond_ty = self.type_check_expr(cond)
+  guard cond_ty is Bool else {
+    raise TypeCheckError("while loop condition must be of type Bool, got \{cond_ty}")
+  }
+  let block_ty = self.type_check_block(body)
+  guard block_ty is Unit else {
+    raise TypeCheckError("while loop body must be of type Unit, got \{block_ty}")
+  }
+  ()
 }
 
 pub fn Context::type_check_for_stmt(self: Self, for_stmt: ForStmt) -> Unit raise TypeCheckError {
-  ...
+  let { inits, cond, steps, body, .. } = for_stmt
+  self.push_env() // new scope for for loop
+
+  // type check inits
+  for init_expr in inits {
+    let (name, expr) = init_expr
+    let expr_ty = self.type_check_expr(expr)
+    self.set_env(name, expr_ty)
+  }
+
+  // type check cond
+  if cond is Some(c) {
+    let cond_ty = self.type_check_expr(c)
+    guard cond_ty is Bool else {
+      raise TypeCheckError("for loop condition must be of type Bool, got \{cond_ty}")
+    }
+  }
+  // type check steps
+  for step in steps {
+    let (name, _, expr) = step
+    guard self.get_ident_type(name) is Some(var_ty) else {
+      raise TypeCheckError("undefined variable in for loop step: \{name}")
+    }
+    let expr_ty = self.type_check_expr(expr)
+    guard var_ty == expr_ty else {
+      raise TypeCheckError("type mismatch in for loop step: variable \{name} is of type \{var_ty}, got \{expr_ty}")
+    }
+  }
+
+  // type check body
+  let block_ty = self.type_check_block(body)
+
+  guard block_ty is Unit else {
+    raise TypeCheckError("for loop body must be of type Unit, got \{block_ty}")
+  }
+
+  // Out of scope
+  self.pop_env()
+  ()
 }
 
 pub fn Context::type_check_return_stmt(self: Self, ret_expr: Expr) -> TypeKind raise TypeCheckError {
-  ...
+  let ret_ty = self.type_check_expr(ret_expr)
+  guard self.current_func is Some(func) else {
+    println("Compiler ICE: not set current function while met return statement");
+    panic()
+  }
+  let expected_ty = func.ret_ty.kind
+  guard ret_ty == expected_ty else {
+    raise TypeCheckError("return type mismatch: expected \{expected_ty}, got \{ret_ty}")
+  }
+  ret_ty
 }

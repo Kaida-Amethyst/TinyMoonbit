@@ -248,7 +248,7 @@ pub enum TypeKind {
   Array(TypeKind)
   Function(Array[TypeKind], TypeKind)
   Defined(String, Array[TypeKind]) // Array[Int], Map[String, Int]
-} derive(Show)
+} derive(Show, Eq)
 
 ///|
 pub fn Context::parse_type(
@@ -363,42 +363,6 @@ pub fn Context::parse_type(
       panic()
     }
     tok => raise ParseError((tok[0], "InValid Type Parsing"))
-  }
-}
-
-pub impl Eq for TypeKind with equal(self, other) {
-  match (self, other) {
-    (Unit, Unit) => true
-    (Bool, Bool) => true
-    (Int, Int) => true
-    (Int64, Int64) => true
-    (UInt, UInt) => true
-    (UInt64, UInt64) => true
-    (Float, Float) => true
-    (Double, Double) => true
-    (String, String) => true
-    (Tuple(tys1), Tuple(tys2)) => {
-      tys1.length() == tys2.length() &&
-      tys1.zip(tys2)
-          .iter()
-          .all(tpair => tpair is (t1, t2) && t1.equal(t2))
-    }
-    (Array(ty1), Array(ty2)) => ty1.equal(ty2)
-    (Function(param_tys1, ret_ty1), Function(param_tys2, ret_ty2)) => {
-      param_tys1.length() == param_tys2.length() &&
-      param_tys1.zip(param_tys2)
-          .iter()
-          .all(tpair => tpair is (t1, t2) && t1.equal(t2)) &&
-      ret_ty1.equal(ret_ty2)
-    }
-    (Defined(name1, sub_tys1), Defined(name2, sub_tys2)) => {
-      name1 == name2 &&
-      sub_tys1.length() == sub_tys2.length() &&
-      sub_tys1.zip(sub_tys2)
-          .iter()
-          .all(tpair => tpair is (t1, t2) && t1.equal(t2))
-    }
-    _ => false
   }
 }
 
@@ -931,7 +895,7 @@ pub struct IfExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   cond : Expr
   then_block : BlockExpr
   else_block : @either.Either[IfExpr, BlockExpr]?
@@ -1177,7 +1141,7 @@ pub struct AtomExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : AtomExprKind
 } derive(Show, Eq)
 
