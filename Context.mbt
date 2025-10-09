@@ -13,8 +13,12 @@ pub struct Context {
   struct_defs : Map[String, StructDef]
   // enum_defs : Array[EnumDef]
 
+  // Type Check Phase
   mut type_env : Env[String, TypeKind]
   mut current_func : TopFunction?
+
+  // Knf Phase
+  name_counter: Map[String, Int] // for generating unique variable names
 
   //
   source_file : String
@@ -33,6 +37,7 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     top_lets: Map::new(),
     type_env: Env::new(),
     current_func: None,
+    name_counter: Map::new(),
     source_file,
   }
 }
