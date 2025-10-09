@@ -226,7 +226,7 @@ pub struct Type {
 } derive(Show, Eq)
 
 ///|
-pub enum TypeKind {
+pub(all) enum TypeKind {
   Unit
   Bool
   Int
