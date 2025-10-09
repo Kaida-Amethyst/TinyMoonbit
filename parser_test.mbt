@@ -422,7 +422,7 @@ test "Block Expr Parsing" {
   let code =
     #|{
     #|  let x: Int = 10;
-    #|  let y = 20;
+    #|  let y = 20
     #|  x + y
     #|}
   let ctx = Context::new(code)
@@ -430,10 +430,10 @@ test "Block Expr Parsing" {
   let { tokens, .. } = ctx
   let (e, tok_view) = ctx.parse_block_expr(tokens[:])
   assert_true(
-    e.stmts.length() is 2 &&
+    e.stmts.length() is 3 &&
     e.stmts[0].kind is LetStmt(_) &&
     e.stmts[1].kind is LetStmt(_) &&
-    e.final_expr is Some(ret) &&
+    e.stmts[2].kind is ExprStmt(ret) &&
     ret.kind is BinaryExpr(Add, left, right) &&
     left.kind is ApplyExpr(a1) &&
     a1.kind is AtomExpr(a1) &&
@@ -461,15 +461,15 @@ test "If Expr Parsing" {
     e.cond.kind is ApplyExpr(a) &&
     a.kind is AtomExpr(a) &&
     a.kind is Bool(true) &&
-    e.then_block.stmts.length() is 0 &&
-    e.then_block.final_expr is Some(then_ret) &&
-    then_ret.kind is ApplyExpr(then_a) &&
+    e.then_block.stmts.length() is 1 &&
+    e.then_block.stmts is [then_ret] &&
+    then_ret.kind is ExprStmt({ kind: ApplyExpr(then_a), ..} ) &&
     then_a.kind is AtomExpr(then_a) &&
     then_a.kind is Int(1) &&
     e.else_block is Some(Right(else_block)) &&
-    else_block.stmts.length() is 0 &&
-    else_block.final_expr is Some(else_ret) &&
-    else_ret.kind is ApplyExpr(else_a) &&
+    else_block.stmts.length() is 1 &&
+    else_block.stmts is [else_ret] &&
+    else_ret.kind is ExprStmt({ kind: ApplyExpr(else_a), ..}) &&
     else_a.kind is AtomExpr(else_a) &&
     else_a.kind is Int(0),
   )
@@ -496,8 +496,9 @@ test "If Expr Parsing" {
     right.kind is ApplyExpr(a2) &&
     a2.kind is AtomExpr(a2) &&
     a2.kind is Ident("b") &&
-    e.then_block.stmts.length() is 0 &&
-    e.then_block.final_expr is Some(then_ret) &&
+    e.then_block.stmts.length() is 1 &&
+    e.then_block.stmts is [then_ret] &&
+    then_ret is { kind: ExprStmt(then_ret), .. } &&
     then_ret.kind is ApplyExpr(then_a) &&
     then_a.kind is AtomExpr(then_a) &&
     then_a.kind is Ident("a") &&
@@ -509,14 +510,16 @@ test "If Expr Parsing" {
     right2.kind is ApplyExpr(a4) &&
     a4.kind is AtomExpr(a4) &&
     a4.kind is Ident("b") &&
-    else_if.then_block.stmts.length() is 0 &&
-    else_if.then_block.final_expr is Some(else_if_ret) &&
+    else_if.then_block.stmts.length() is 1 &&
+    else_if.then_block.stmts is [else_if_ret] &&
+    else_if_ret.kind is ExprStmt(else_if_ret) &&
     else_if_ret.kind is ApplyExpr(else_if_a) &&
     else_if_a.kind is AtomExpr(else_if_a) &&
     else_if_a.kind is Int(0) &&
     else_if.else_block is Some(Right(else_block)) &&
-    else_block.stmts.length() is 0 &&
-    else_block.final_expr is Some(else_ret) &&
+    else_block.stmts.length() is 1 &&
+    else_block.stmts is [else_ret] &&
+    else_ret.kind is ExprStmt(else_ret) &&
     else_ret.kind is ApplyExpr(else_a) &&
     else_a.kind is AtomExpr(else_a) &&
     else_a.kind is Ident("b"),
@@ -542,7 +545,6 @@ test "While Stmt Parsing" {
     a2.kind is AtomExpr(a2) &&
     a2.kind is Int(10) &&
     stmt.body.stmts.length() is 1 &&
-    stmt.body.final_expr is None &&
     stmt.body.stmts[0].kind is AssignStmt(assign) &&
     assign.op is PlusAssign &&
     assign.left_value.kind is Ident("i") &&

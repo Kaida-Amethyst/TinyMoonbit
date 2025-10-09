@@ -7,7 +7,7 @@ fn fib(n: Int) -> Int {
 }
 
 fn main {
-  let n = 10;
-  let res = fib(n);
-  print_int(res);
+  let n = 10
+  let res = fib(n)
+  print_int(res)
 }

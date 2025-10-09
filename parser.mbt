@@ -964,7 +964,6 @@ pub struct BlockExpr {
   end_column : Int
   ty : TypeKind?
   stmts : Array[Stmt]
-  final_expr : Expr?
 } derive(Show, Eq)
 
 ///|
@@ -977,38 +976,32 @@ pub fn Context::parse_block_expr(
     panic()
   }
   let stmts : Array[Stmt] = Array::new()
-  let mut final_expr : Expr? = None
   let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Bracket('}'), lineno, column }, .. rest] =>
       break (rest, lineno, column)
     [] => {
-      println("Compiler ICE: Empty Token ArrayView")
+      println("Compiler ICE: Failed Parsing BlockExpr, Empty Token ArrayView")
       panic()
     }
     tokens => {
       let (stmt, rest) = self.parse_stmt(tokens)
-      let rest = if !(stmt.kind is ExprStmt(_)) {
-        guard rest is [{ kind: SemiColon, .. }, .. rest] else {
-          raise ParseError((rest[0], "Failed Parsing Block Expr, Expect ';'"))
+      if rest is [{ kind: SemiColon, .. }, ..tokens] {
+        stmts.push(stmt)
+        continue tokens
+      } else if !(rest is [{ kind: Bracket('}'), .. }, ..]) {
+        guard rest is [tok, ..] else {
+          println("Compiler ICE: Failed Parsing BlockExpr, Empty Token ArrayView")
+          panic()
+        }
+        guard tok.lineno > stmt.end_lineno else {
+          raise ParseError((tok, "Expect ';' or new line after statement"))
         }
         stmts.push(stmt)
-        rest
-      } else if rest is [{ kind: Bracket('}'), .. }, ..] {
-        guard stmt.kind is ExprStmt(expr)
-        final_expr = Some(expr)
-        rest
-      } else if stmt.kind is ExprStmt({ kind: IfExpr(_) | BlockExpr(_), .. }) {
-        stmts.push(stmt)
-        rest
-      } else if rest is [{ kind: SemiColon, .. }, .. rest] {
-        stmts.push(stmt)
-        rest
+        continue rest
       } else {
-        raise ParseError(
-          (rest[0], "Failed Parsing BlockExpr, Expect ';' or '}'"),
-        )
+        stmts.push(stmt)
+        continue rest
       }
-      continue rest
     }
   }
   let block_expr = BlockExpr::{
@@ -1018,7 +1011,6 @@ pub fn Context::parse_block_expr(
     end_column,
     ty: None,
     stmts,
-    final_expr,
   }
   (block_expr, tokens)
 }
@@ -1062,11 +1054,13 @@ pub enum ApplyExprKind {
 } derive(Show, Eq)
 
 ///|
+#callsite(autofill(loc))
 pub fn Context::parse_apply_expr(
   self : Context,
   tokens : ArrayView[Token],
+  loc~: SourceLoc
 ) -> (ApplyExpr, ArrayView[Token]) raise ParseError {
-  let (atom_expr, tokens) = self.parse_atom_expr(tokens)
+  let (atom_expr, tokens) = self.parse_atom_expr(tokens, loc~)
   let apply_expr = ApplyExpr::{
     lineno: atom_expr.lineno,
     column: atom_expr.column,
@@ -1182,9 +1176,11 @@ pub enum AtomExprKind {
 } derive(Show, Eq)
 
 ///|
+#callsite(autofill(loc))
 pub fn Context::parse_atom_expr(
   self : Self,
   tokens : ArrayView[Token],
+  loc~: SourceLoc
 ) -> (AtomExpr, ArrayView[Token]) raise ParseError {
   match tokens {
     [{ kind: Int(v), lineno, column }, ..] => {
@@ -1292,7 +1288,7 @@ pub fn Context::parse_atom_expr(
       println("Compiler ICE: Empty Token ArrayView")
       panic()
     }
-    _ => raise ParseError((tokens[0], "InValid Atom Expression"))
+    _ => raise ParseError((tokens[0], "InValid Atom Expression, loc: \{loc}"))
   }
 }
 
@@ -1788,7 +1784,6 @@ pub fn Context::parse_left_value(
 ///    a2.kind is AtomExpr(a2) &&
 ///    a2.kind is Int(10) &&
 ///    stmt.body.stmts.length() is 1 &&
-///    stmt.body.final_expr is None &&
 ///    stmt.body.stmts[0].kind is AssignStmt(assign) &&
 ///    assign.op is PlusAssign &&
 ///    assign.left_value.kind is Ident("i") &&
