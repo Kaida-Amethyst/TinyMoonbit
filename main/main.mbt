@@ -99,21 +99,18 @@
 //}
 
 fn main {
-  let help_info = 
+  let help_info =
     #|Usage: tmbt [options]
     #|
     #|Options:
     #|  -h, --help            Show this help message
     #|  -f, --file <file>     Specify the input TinyMoonbit source file (Must provide)
     #|  -stop-after=parse     Stop after parsing
-
   let args = @env.args()
-
   if args.contains("-h") || args.contains("--help") {
     println(help_info)
     return
   }
-
   let fidx = args.search_by(arg => arg is "-f" || arg is "--file")
   let code = match fidx {
     Some(idx) if idx + 1 < args.length() => {
@@ -131,12 +128,13 @@ fn main {
       return
     }
     None => {
-      println("Error: No input file specified. Use -f or --file to specify the source file.")
+      println(
+        "Error: No input file specified. Use -f or --file to specify the source file.",
+      )
       println(help_info)
       return
     }
   }
-
   let ctx = @TinyMoonbit.Context::new(code)
   ctx.tokenize() catch {
     err => {
@@ -158,5 +156,4 @@ fn main {
 
   // dummy
   println(ast)
-
 }

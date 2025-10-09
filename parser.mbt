@@ -102,9 +102,6 @@
 ///
 /// match_item :=
 ///   pattern ("if" Expr)? "=>" Expr ";"
-
-
-
 pub struct Program {
   top_functions : Array[TopFunction]
   extern_functions : Array[ExternFunction]
@@ -113,40 +110,35 @@ pub struct Program {
   // enum_defs : Array[EnumDef]
 } derive(Show, Eq)
 
-pub fn Context::parse_program(
-  self: Self,
-) -> Program raise ParseError {
+///|
+pub fn Context::parse_program(self : Self) -> Program raise ParseError {
   let top_functions : Array[TopFunction] = Array::new()
   let extern_functions : Array[ExternFunction] = Array::new()
   let top_lets : Array[TopLet] = Array::new()
   loop self.tokens[:] {
-    [{kind: Keyword(Extern), ..}, ..] as tokens => {
+    [{ kind: Keyword(Extern), .. }, ..] as tokens => {
       let (extern_fn, rest) = self.parse_extern_function(tokens)
       extern_functions.push(extern_fn)
       continue rest
     }
-    [{kind: Keyword(Fn), ..}, ..] as tokens => {
+    [{ kind: Keyword(Fn), .. }, ..] as tokens => {
       let (top_fn, rest) = self.parse_top_function(tokens)
       top_functions.push(top_fn)
       continue rest
     }
-    [{kind: Keyword(Let), ..}, ..] as tokens => {
+    [{ kind: Keyword(Let), .. }, ..] as tokens => {
       let (top_let, rest) = self.parse_top_let(tokens)
       top_lets.push(top_let)
       continue rest
     }
-    [{kind: EOF, ..}, ..] => break
+    [{ kind: EOF, .. }, ..] => break
     [] => {
       println("Compiler ICE: Empty Token ArrayView")
       panic()
     }
     tokens => raise ParseError((tokens[0], "Unexpected token in top level"))
   }
-  let prog = Program::{
-    top_functions,
-    extern_functions,
-    top_lets,
-  }
+  let prog = Program::{ top_functions, extern_functions, top_lets }
   prog
 }
 
@@ -188,7 +180,13 @@ pub fn Context::parse_top_function(
     let (ret_type, tokens) = self.parse_type(tokens)
     (param_list, ret_type, tokens)
   } else {
-    let ret_type = Type::{ kind: Unit, lineno:-1, column:-1, end_lineno:-1, end_column:-1  }
+    let ret_type = Type::{
+      kind: Unit,
+      lineno: -1,
+      column: -1,
+      end_lineno: -1,
+      end_column: -1,
+    }
     (Array::new(), ret_type, tokens)
   }
   let (body, tokens) = self.parse_block_expr(tokens)
@@ -773,7 +771,6 @@ pub enum ExprKind {
   //MatchExpr(MatchExpr)
 } derive(Show, Eq)
 
-
 ///|
 pub fn Context::parse_expr(
   self : Self,
@@ -996,7 +993,7 @@ pub fn Context::parse_block_expr(
         guard stmt.kind is ExprStmt(expr)
         final_expr = Some(expr)
         rest
-      } else if stmt.kind is ExprStmt({kind: IfExpr(_) | BlockExpr(_), ..}) {
+      } else if stmt.kind is ExprStmt({ kind: IfExpr(_) | BlockExpr(_), .. }) {
         stmts.push(stmt)
         rest
       } else if rest is [{ kind: SemiColon, .. }, .. rest] {
@@ -1430,8 +1427,8 @@ pub fn Context::parse_stmt(
       }
       (stmt, rest)
     }
-    [{kind: Keyword(Return), lineno, column}, .. tokens] => {
-      let (expr, rest) = if tokens is [{kind: SemiColon, ..}, ..] {
+    [{ kind: Keyword(Return), lineno, column }, .. tokens] => {
+      let (expr, rest) = if tokens is [{ kind: SemiColon, .. }, ..] {
         (None, tokens)
       } else {
         let (expr, rest) = self.parse_expr(tokens)
