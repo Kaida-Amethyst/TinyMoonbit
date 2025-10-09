@@ -8,6 +8,12 @@ pub struct Context {
   fatal_errors : Array[ParseError] // stop type check
   normal_errors : Array[ParseError] // stop codegen
 
+  top_functions : Array[TopFunction]
+  extern_functions : Array[ExternFunction]
+  top_lets : Array[TopLet]
+  struct_defs : Array[StructDef]
+  // enum_defs : Array[EnumDef]
+
   mut type_env: Env[String, TypeKind]
   mut current_func: TopFunction?
 
@@ -22,6 +28,10 @@ pub fn Context::new(code : String, source_file~: String = "demo") -> Context {
     tokens: Array::new(),
     fatal_errors: Array::new(),
     normal_errors: Array::new(),
+    top_functions: Array::new(),
+    extern_functions: Array::new(),
+    struct_defs: Array::new(),
+    top_lets: Array::new(),
     type_env: Env::new(),
     current_func: None,
     source_file,

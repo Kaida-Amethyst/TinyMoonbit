@@ -90,6 +90,7 @@
 ///   | BlockExpr
 ///   | IfExpr
 ///   | MatchExpr
+///   | StructConstruct
 ///
 /// BlockExpr :=
 ///   "{" Stmt* Expr? "}"
@@ -100,39 +101,32 @@
 /// MatchExpr :=
 ///   "match" Expr "{" match_item "}"
 ///
+/// StructConstruct :=
+///   Upper "::" "{" (ident ":" Expr)* "}"
+///
 /// match_item :=
 ///   pattern ("if" Expr)? "=>" Expr ";"
-pub struct Program {
-  top_functions : Array[TopFunction]
-  extern_functions : Array[ExternFunction]
-  top_lets : Array[TopLet]
-  // struct_defs : Array[StructDef]
-  // enum_defs : Array[EnumDef]
-} derive(Show, Eq)
 
 ///|
-pub fn Context::parse_program(self : Self) -> Program raise ParseError {
+pub fn Context::parse_program(self : Self) -> Unit raise ParseError {
   guard self.tokens.length() > 0 else {
     println("Compiler ICE: Should tokenize before parsing")
     panic()
   }
-  let top_functions : Array[TopFunction] = Array::new()
-  let extern_functions : Array[ExternFunction] = Array::new()
-  let top_lets : Array[TopLet] = Array::new()
   loop self.tokens[:] {
     [{ kind: Keyword(Extern), .. }, ..] as tokens => {
       let (extern_fn, rest) = self.parse_extern_function(tokens)
-      extern_functions.push(extern_fn)
+      self.extern_functions.push(extern_fn)
       continue rest
     }
     [{ kind: Keyword(Fn), .. }, ..] as tokens => {
       let (top_fn, rest) = self.parse_top_function(tokens)
-      top_functions.push(top_fn)
+      self.top_functions.push(top_fn)
       continue rest
     }
     [{ kind: Keyword(Let), .. }, ..] as tokens => {
       let (top_let, rest) = self.parse_top_let(tokens)
-      top_lets.push(top_let)
+      self.top_lets.push(top_let)
       continue rest
     }
     [{ kind: EOF, .. }, ..] => break
@@ -142,8 +136,6 @@ pub fn Context::parse_program(self : Self) -> Program raise ParseError {
     }
     tokens => raise ParseError((tokens[0], "Unexpected token in top level"))
   }
-  let prog = Program::{ top_functions, extern_functions, top_lets }
-  prog
 }
 
 ///|
@@ -975,8 +967,8 @@ pub fn Context::parse_block_expr(
     }
     tokens => {
       let (stmt, rest) = self.parse_stmt(tokens)
+      stmts.push(stmt)
       if rest is [{ kind: SemiColon, .. }, ..tokens] {
-        stmts.push(stmt)
         continue tokens
       } else if !(rest is [{ kind: Bracket('}'), .. }, ..]) {
         guard rest is [tok, ..] else {
@@ -986,10 +978,8 @@ pub fn Context::parse_block_expr(
         guard tok.lineno > stmt.end_lineno else {
           raise ParseError((tok, "Expect ';' or new line after statement"))
         }
-        stmts.push(stmt)
         continue rest
       } else {
-        stmts.push(stmt)
         continue rest
       }
     }
@@ -2009,4 +1999,102 @@ pub fn Context::parse_pattern(
     }
     _ => raise ParseError((tokens[0], "InValid Pattern"))
   }
+}
+
+pub struct StructDef {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  generic_params : Array[String]
+  fields : Array[(String, Type)]
+} derive(Show, Eq)
+
+pub fn Context::parse_struct_def(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (StructDef, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Keyword(Struct), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_struct_def")
+    panic()
+  }
+  guard tokens is [{ kind: Upper(name), .. }, ..] else {
+    raise ParseError((tokens[0], "Expect struct name"))
+  }
+  let generic_params : Array[String] = Array::new()
+  let tokens = if tokens is [{ kind: Bracket('['), .. }, ..tokens] {
+    loop tokens {
+      [{kind: Upper(g), ..}, ..tokens] => {
+        generic_params.push(g)
+        continue tokens
+      }
+      [{kind: Comma, ..}, {kind: Upper(g), ..}, ..tokens] => {
+        generic_params.push(g)
+        continue tokens
+      }
+      [{kind: Bracket(']'), ..}, ..tokens] => break tokens
+      [] => {
+        println("Compiler ICE: During Parse Struct Def: Empty Token ArrayView")
+        panic()
+      }
+      tokens => raise ParseError((tokens[0], "Failed Parsing StructDef: Invalid generic parameters"))
+    }
+  } else {
+    tokens
+  }
+  guard tokens is [{ kind: Bracket('{'), .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Failed Parsing StructDef: Expect '{'"))
+  }
+  let fields : Array[(String, Type)] = Array::new()
+  let (tokens, end_lineno, end_column) = loop tokens {
+    [{ kind: Bracket('}'), lineno, column }, .. rest] =>
+      break (rest, lineno, column)
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => {
+      let (field_name, field_type, rest) = self.parse_struct_field(tokens)
+      fields.push((field_name, field_type))
+      if rest is [{ kind: SemiColon, .. }, ..tokens] {
+        continue tokens
+      } else if !(rest is [{ kind: Bracket('}'), ..}, ..]) {
+        guard rest is [tok, ..] else {
+          println("Compiler ICE: Failed Parsing StructDef: Empty Token ArrayView")
+          panic()
+        }
+        guard tok.lineno > field_type.end_lineno else {
+          raise ParseError((tok, "Expect ',' or '}', or new line after struct field"))
+        }
+        continue rest
+      } else {
+        continue rest
+      }
+    }
+  }
+  let struct_def = StructDef::{
+    lineno,
+    column,
+    end_lineno,
+    end_column,
+    name,
+    generic_params,
+    fields,
+  }
+  (struct_def, tokens)
+}
+
+pub fn Context::parse_struct_field(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (String, Type, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Lower(field_name), ..}, .. tokens] else {
+    raise ParseError((tokens[0], "Expect struct field name"))
+  }
+  guard tokens is [{ kind: Colon, .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect ':' after struct field name"))
+  }
+  let (field_type, tokens) = self.parse_type(tokens)
+  (field_name, field_type, tokens)
 }

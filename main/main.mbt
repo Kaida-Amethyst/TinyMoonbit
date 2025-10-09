@@ -142,7 +142,7 @@ fn main {
       return
     }
   }
-  let ast = ctx.parse_program() catch {
+  ctx.parse_program() catch {
     err => {
       ctx.print_error(err)
       return
@@ -150,10 +150,16 @@ fn main {
   }
   if args.contains("-stop-after=parse") {
     println("Parsed AST:")
-    println(ast)
+    println(ctx.top_lets)
+    println(ctx.extern_functions)
+    println(ctx.top_functions)
+    println(ctx.struct_defs)
     return
   }
 
   // dummy
-  println(ast)
+  println(ctx.top_lets)
+  println(ctx.extern_functions)
+  println(ctx.top_functions)
+  println(ctx.struct_defs)
 }
