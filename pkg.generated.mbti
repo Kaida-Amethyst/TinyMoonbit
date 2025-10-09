@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "Kaida-Amethyst/TinyMoonbit"
+package "Kaida-Amethyst/TinyMoonBit"
 
 import(
   "Kaida-Amethyst/either"
@@ -15,13 +15,16 @@ impl Show for ParseError
 pub suberror TokenizeError String
 impl Show for TokenizeError
 
+pub suberror TypeCheckError String
+impl Show for TypeCheckError
+
 // Types and methods
 pub struct ApplyExpr {
   lineno : Int
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : ApplyExprKind
 }
 impl Eq for ApplyExpr
@@ -66,7 +69,7 @@ pub struct AtomExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : AtomExprKind
 }
 impl Eq for AtomExpr
@@ -86,6 +89,7 @@ pub enum AtomExprKind {
   Paren(Expr)
   Tuple(Array[Expr])
   Array(Array[Expr])
+  StructConstruct(String, Array[(String, Expr)])
 }
 impl Eq for AtomExprKind
 impl Show for AtomExprKind
@@ -119,7 +123,6 @@ pub struct BlockExpr {
   end_column : Int
   ty : TypeKind?
   stmts : Array[Stmt]
-  final_expr : Expr?
 }
 impl Eq for BlockExpr
 impl Show for BlockExpr
@@ -129,8 +132,18 @@ pub struct Context {
   tokens : Array[Token]
   fatal_errors : Array[ParseError]
   normal_errors : Array[ParseError]
+  top_functions : Map[String, TopFunction]
+  extern_functions : Map[String, ExternFunction]
+  top_lets : Map[String, TopLet]
+  struct_defs : Map[String, StructDef]
+  mut type_env : Env[String, TypeKind]
+  mut current_func : TopFunction?
+  source_file : String
 }
-fn Context::new(String) -> Self
+fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
+fn Context::get_error_msg(Self, Token, String) -> String
+fn Context::get_ident_type(Self, String) -> TypeKind?
+fn Context::new(String, source_file? : String) -> Self
 fn Context::parse_apply_expr(Self, ArrayView[Token]) -> (ApplyExpr, ArrayView[Token]) raise ParseError
 fn Context::parse_assign_stmt(Self, ArrayView[Token]) -> (AssignStmt, ArrayView[Token]) raise ParseError
 fn Context::parse_atom_expr(Self, ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError
@@ -145,19 +158,55 @@ fn Context::parse_let_stmt(Self, ArrayView[Token]) -> (LetStmt, ArrayView[Token]
 fn Context::parse_param(Self, ArrayView[Token]) -> (Param, ArrayView[Token]) raise ParseError
 fn Context::parse_param_list(Self, ArrayView[Token]) -> (Array[Param], ArrayView[Token]) raise ParseError
 fn Context::parse_pattern(Self, ArrayView[Token]) -> (Pattern, ArrayView[Token]) raise ParseError
+fn Context::parse_program(Self) -> Unit raise ParseError
 fn Context::parse_stmt(Self, ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise ParseError
+fn Context::parse_struct_def(Self, ArrayView[Token]) -> (StructDef, ArrayView[Token]) raise ParseError
+fn Context::parse_struct_field(Self, ArrayView[Token]) -> (StructField, ArrayView[Token]) raise ParseError
 fn Context::parse_top_function(Self, ArrayView[Token]) -> (TopFunction, ArrayView[Token]) raise ParseError
 fn Context::parse_top_let(Self, ArrayView[Token]) -> (TopLet, ArrayView[Token]) raise ParseError
 fn Context::parse_type(Self, ArrayView[Token]) -> (Type, ArrayView[Token]) raise ParseError
 fn Context::parse_while_stmt(Self, ArrayView[Token]) -> (WhileStmt, ArrayView[Token]) raise ParseError
+fn Context::pop_env(Self) -> Unit
+fn Context::print_error(Self, ParseError) -> Unit
+fn Context::push_env(Self) -> Unit
+fn Context::set_env(Self, String, TypeKind) -> Unit
 fn Context::tokenize(Self) -> Unit raise TokenizeError
+fn Context::type_check_apply_expr(Self, ApplyExpr) -> TypeKind raise TypeCheckError
+fn Context::type_check_array_access_expr(Self, ApplyExpr, Expr) -> TypeKind raise TypeCheckError
+fn Context::type_check_assign_stmt(Self, AssignStmt) -> Unit raise TypeCheckError
+fn Context::type_check_atom_expr(Self, AtomExpr) -> TypeKind raise TypeCheckError
+fn Context::type_check_block(Self, BlockExpr) -> TypeKind raise TypeCheckError
+fn Context::type_check_expr(Self, Expr) -> TypeKind raise TypeCheckError
+fn Context::type_check_field_access_expr(Self, ApplyExpr, String) -> TypeKind raise TypeCheckError
+fn Context::type_check_for_stmt(Self, ForStmt) -> Unit raise TypeCheckError
+fn Context::type_check_func_call_expr(Self, ApplyExpr, Array[Expr]) -> TypeKind raise TypeCheckError
+fn Context::type_check_if_expr(Self, IfExpr) -> TypeKind raise TypeCheckError
+fn Context::type_check_left_value(Self, LeftValue) -> TypeKind raise TypeCheckError
+fn Context::type_check_let_mut_stmt(Self, LetMutStmt) -> Unit raise TypeCheckError
+fn Context::type_check_let_stmt(Self, LetStmt) -> Unit raise TypeCheckError
+fn Context::type_check_return_stmt(Self, Expr) -> TypeKind raise TypeCheckError
+fn Context::type_check_stmt(Self, Stmt) -> TypeKind raise TypeCheckError
+fn Context::type_check_tuple_access_expr(Self, ApplyExpr, Int) -> TypeKind raise TypeCheckError
+fn Context::type_check_while_stmt(Self, WhileStmt) -> Unit raise TypeCheckError
+fn Context::typecheck_function(Self, TopFunction) -> Unit raise TypeCheckError
+fn Context::typecheck_program(Self) -> Unit raise TypeCheckError
+
+pub struct Env[K, V] {
+  parent : Env[K, V]?
+  data : Map[K, V]
+}
+fn[K : Eq + Hash, V] Env::contains(Self[K, V], K) -> Bool
+fn[K : Eq + Hash, V] Env::get(Self[K, V], K) -> V?
+fn[K, V] Env::new(parent? : Self[K, V]?) -> Self[K, V]
+fn[K : Eq + Hash, V] Env::set(Self[K, V], K, V) -> Unit
+fn[K, V] Env::sub_env(Self[K, V]) -> Self[K, V]
 
 pub struct Expr {
   lineno : Int
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : ExprKind
 }
 impl Eq for Expr
@@ -182,6 +231,8 @@ pub struct ExternFunction {
   params : Array[Param]
   ret_ty : Type
 }
+impl Eq for ExternFunction
+impl Show for ExternFunction
 
 pub struct ForStmt {
   lineno : Int
@@ -201,7 +252,7 @@ pub struct IfExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   cond : Expr
   then_block : BlockExpr
   else_block : @either.Either[IfExpr, BlockExpr]?
@@ -296,7 +347,7 @@ pub struct LetMutStmt {
   end_lineno : Int
   end_column : Int
   name : String
-  ty : Type?
+  mut ty : Type?
   expr : Expr
 }
 impl Eq for LetMutStmt
@@ -308,7 +359,7 @@ pub struct LetStmt {
   end_lineno : Int
   end_column : Int
   pattern : Pattern
-  ty : Type?
+  mut ty : Type?
   expr : Expr
 }
 impl Eq for LetStmt
@@ -365,9 +416,33 @@ pub enum StmtKind {
   WhileStmt(WhileStmt)
   ForStmt(ForStmt)
   ExprStmt(Expr)
+  ReturnStmt(Expr?)
 }
 impl Eq for StmtKind
 impl Show for StmtKind
+
+pub struct StructDef {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  generic_params : Array[String]
+  fields : Array[StructField]
+}
+impl Eq for StructDef
+impl Show for StructDef
+
+pub struct StructField {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type
+}
+impl Eq for StructField
+impl Show for StructField
 
 pub struct Token {
   kind : TokenKind
@@ -414,9 +489,11 @@ pub struct TopFunction {
   end_column : Int
   fname : String
   param_list : Array[Param]
-  ret_type : Type
+  ret_ty : Type
   body : BlockExpr
 }
+impl Eq for TopFunction
+impl Show for TopFunction
 
 pub struct TopLet {
   lineno : Int
@@ -427,6 +504,8 @@ pub struct TopLet {
   ty : Type
   expr : Expr
 }
+impl Eq for TopLet
+impl Show for TopLet
 
 pub struct Type {
   lineno : Int
@@ -438,7 +517,7 @@ pub struct Type {
 impl Eq for Type
 impl Show for Type
 
-pub enum TypeKind {
+pub(all) enum TypeKind {
   Unit
   Bool
   Int
@@ -448,10 +527,10 @@ pub enum TypeKind {
   Float
   Double
   String
-  Tuple(Array[Type])
-  Array(Type)
-  Function(Array[Type], Type)
-  Defined(String, Array[Type])
+  Tuple(Array[TypeKind])
+  Array(TypeKind)
+  Function(Array[TypeKind], TypeKind)
+  Defined(String, Array[TypeKind])
 }
 impl Eq for TypeKind
 impl Show for TypeKind

@@ -6,12 +6,13 @@ pub fn Context::typecheck_program(self : Self) -> Unit raise TypeCheckError {
   let { top_lets, extern_functions, top_functions, .. } = self
   // 1. collect all function signatures
   let dup_container = Set::new()
-  fn dup_check(name: String) -> Unit raise TypeCheckError {
+  fn dup_check(name : String) -> Unit raise TypeCheckError {
     if dup_container.contains(name) {
       raise TypeCheckError("duplicate function name: \{name}")
     }
     dup_container.add(name)
   }
+
   for ext in extern_functions.values() {
     let { params, ret_ty, fname, .. } = ext
     let param_tys = params.map(p => p.ty.kind)

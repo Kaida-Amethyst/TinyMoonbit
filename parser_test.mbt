@@ -274,11 +274,11 @@ test "Tuple or Paren Expr Parsing" {
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Struct Construct Parsing" {
-  let code = 
+  let code =
     #|Point::{ x : 1, y: 2, }
     #|Circle::{ x: 0, y: 1, radius: 5.0 }
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx

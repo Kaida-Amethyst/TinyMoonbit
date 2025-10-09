@@ -1261,8 +1261,10 @@ pub fn Context::parse_atom_expr(
       }
       (expr, tokens[1:])
     }
-    [{ kind: Upper(_), ..}, ..] as tokens => self.parse_struct_or_enum_construct(tokens)
-    [{ kind: Bracket('('), .. }, ..] as tokens => self.parse_paren_or_tuple_expr(tokens)
+    [{ kind: Upper(_), .. }, ..] as tokens =>
+      self.parse_struct_or_enum_construct(tokens)
+    [{ kind: Bracket('('), .. }, ..] as tokens =>
+      self.parse_paren_or_tuple_expr(tokens)
     [{ kind: Bracket('['), .. }, ..] as tokens => self.parse_array_expr(tokens)
     [] => {
       println("Compiler ICE: Empty Token ArrayView")
@@ -1318,6 +1320,7 @@ fn Context::parse_paren_or_tuple_expr(
   (atom_expr, tokens)
 }
 
+///|
 fn Context::parse_struct_or_enum_construct(
   self : Self,
   tokens : ArrayView[Token],
@@ -1326,9 +1329,9 @@ fn Context::parse_struct_or_enum_construct(
     println("Compiler ICE: Misuse parse_struct_or_enum_construct")
     panic()
   }
-  if tokens is [{kind: DoubleColon, ..}, ..tokens] {
-    guard tokens is [{ kind: Bracket('{'), .. }, ..tokens] else {
-      raise ParseError((tokens[0], "Expect '{' for struct construct") )
+  if tokens is [{ kind: DoubleColon, .. }, .. tokens] {
+    guard tokens is [{ kind: Bracket('{'), .. }, .. tokens] else {
+      raise ParseError((tokens[0], "Expect '{' for struct construct"))
     }
     let fields : Array[(String, Expr)] = Array::new()
     let (tokens, end_lineno, end_column) = loop tokens {
@@ -1337,7 +1340,7 @@ fn Context::parse_struct_or_enum_construct(
       [{ kind: Comma, .. }, { kind: Bracket('}'), lineno, column }, .. rest] =>
         break (rest, lineno, column)
       [{ kind: Comma, .. }, { kind: Lower(field), .. }, .. tokens] => {
-        guard tokens is [{ kind: Colon, .. }, ..tokens] else {
+        guard tokens is [{ kind: Colon, .. }, .. tokens] else {
           raise ParseError((tokens[0], "Expect ':'"))
         }
         let (expr, rest) = self.parse_expr(tokens)

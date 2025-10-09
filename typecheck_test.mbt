@@ -1,8 +1,7 @@
-
+///|
 test "AtomExpr TypeCheck Test" {
-  let code = 
+  let code =
     #|1 3.14 "hello" x
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -21,13 +20,12 @@ test "AtomExpr TypeCheck Test" {
   let (a, _) = ctx.parse_atom_expr(tok_view)
   let _ = ctx.type_check_atom_expr(a)
   assert_true(a.ty is Some(Int))
-
 }
 
+///|
 test "ApplyExpr TypeCheck Test" {
   let code =
     #|arr[3] fib(5.0)
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
