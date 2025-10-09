@@ -99,5 +99,64 @@
 //}
 
 fn main {
+  let help_info = 
+    #|Usage: tmbt [options]
+    #|
+    #|Options:
+    #|  -h, --help            Show this help message
+    #|  -f, --file <file>     Specify the input TinyMoonbit source file (Must provide)
+    #|  -stop-after=parse     Stop after parsing
+
+  let args = @env.args()
+
+  if args.contains("-h") || args.contains("--help") {
+    println(help_info)
+    return
+  }
+
+  let fidx = args.search_by(arg => arg is "-f" || arg is "--file")
+  let code = match fidx {
+    Some(idx) if idx + 1 < args.length() => {
+      let filename = args[idx + 1]
+      let code = @fs.read_file_to_string(filename) catch {
+        err => {
+          println("Error reading file '\{filename}': \{err}")
+          return
+        }
+      }
+      code
+    }
+    Some(_) => {
+      println("Error: No file specified after -f/--file option.")
+      return
+    }
+    None => {
+      println("Error: No input file specified. Use -f or --file to specify the source file.")
+      println(help_info)
+      return
+    }
+  }
+
+  let ctx = @TinyMoonbit.Context::new(code)
+  ctx.tokenize() catch {
+    err => {
+      println("Lexing error: \{err}")
+      return
+    }
+  }
+  let ast = ctx.parse_program() catch {
+    err => {
+      println("Parsing error: \{err}")
+      return
+    }
+  }
+  if args.contains("-stop-after=parse") {
+    println("Parsed AST:")
+    println(ast)
+    return
+  }
+
+  // dummy
+  println(ast)
 
 }

@@ -111,7 +111,7 @@ pub struct Program {
   top_lets : Array[TopLet]
   // struct_defs : Array[StructDef]
   // enum_defs : Array[EnumDef]
-}
+} derive(Show, Eq)
 
 pub fn Context::parse_program(
   self: Self,
@@ -160,7 +160,7 @@ pub struct TopFunction {
   param_list : Array[Param]
   ret_type : Type
   body : BlockExpr
-}
+} derive(Show, Eq)
 
 ///|
 pub fn Context::parse_top_function(
@@ -619,7 +619,7 @@ pub struct ExternFunction {
   // param list
   params : Array[Param]
   ret_ty : Type
-}
+} derive(Show, Eq)
 
 ///|
 pub fn Context::parse_extern_function(
@@ -679,7 +679,7 @@ pub struct TopLet {
   name : String
   ty : Type
   expr : Expr
-}
+} derive(Show, Eq)
 
 ///|
 ///
@@ -763,6 +763,16 @@ pub struct Expr {
   ty : TypeKind?
   kind : ExprKind
 } derive(Show, Eq)
+
+///|
+pub enum ExprKind {
+  ApplyExpr(ApplyExpr)
+  BlockExpr(BlockExpr)
+  BinaryExpr(BinaryOp, Expr, Expr)
+  IfExpr(IfExpr)
+  //MatchExpr(MatchExpr)
+} derive(Show, Eq)
+
 
 ///|
 pub fn Context::parse_expr(
@@ -889,15 +899,6 @@ fn Context::parse_expr_list(
 }
 
 ///|
-pub enum ExprKind {
-  ApplyExpr(ApplyExpr)
-  BlockExpr(BlockExpr)
-  BinaryExpr(BinaryOp, Expr, Expr)
-  IfExpr(IfExpr)
-  //MatchExpr(MatchExpr)
-} derive(Show, Eq)
-
-///|
 pub struct IfExpr {
   lineno : Int
   column : Int
@@ -991,12 +992,15 @@ pub fn Context::parse_block_expr(
         }
         stmts.push(stmt)
         rest
-      } else if rest is [{ kind: SemiColon, .. }, .. rest] {
-        stmts.push(stmt)
-        rest
       } else if rest is [{ kind: Bracket('}'), .. }, ..] {
         guard stmt.kind is ExprStmt(expr)
         final_expr = Some(expr)
+        rest
+      } else if stmt.kind is ExprStmt({kind: IfExpr(_) | BlockExpr(_), ..}) {
+        stmts.push(stmt)
+        rest
+      } else if rest is [{ kind: SemiColon, .. }, .. rest] {
+        stmts.push(stmt)
         rest
       } else {
         raise ParseError(
