@@ -116,17 +116,17 @@ pub fn Context::parse_program(self : Self) -> Unit raise ParseError {
   loop self.tokens[:] {
     [{ kind: Keyword(Extern), .. }, ..] as tokens => {
       let (extern_fn, rest) = self.parse_extern_function(tokens)
-      self.extern_functions.push(extern_fn)
+      self.extern_functions.set(extern_fn.fname, extern_fn)
       continue rest
     }
     [{ kind: Keyword(Fn), .. }, ..] as tokens => {
       let (top_fn, rest) = self.parse_top_function(tokens)
-      self.top_functions.push(top_fn)
+      self.top_functions.set(top_fn.fname, top_fn)
       continue rest
     }
     [{ kind: Keyword(Let), .. }, ..] as tokens => {
       let (top_let, rest) = self.parse_top_let(tokens)
-      self.top_lets.push(top_let)
+      self.top_lets.set(top_let.name, top_let)
       continue rest
     }
     [{ kind: EOF, .. }, ..] => break

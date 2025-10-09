@@ -5,16 +5,25 @@ pub suberror TypeCheckError String derive(Show)
 pub fn Context::typecheck_program(self : Self) -> Unit raise TypeCheckError {
   let { top_lets, extern_functions, top_functions, .. } = self
   // 1. collect all function signatures
-  for ext in extern_functions {
+  let dup_container = Set::new()
+  fn dup_check(name: String) -> Unit raise TypeCheckError {
+    if dup_container.contains(name) {
+      raise TypeCheckError("duplicate function name: \{name}")
+    }
+    dup_container.add(name)
+  }
+  for ext in extern_functions.values() {
     let { params, ret_ty, fname, .. } = ext
     let param_tys = params.map(p => p.ty.kind)
     let fty : TypeKind = Function(param_tys, ret_ty.kind)
+    dup_check(fname)
     self.type_env.set(fname, fty)
   }
 
   // 2. collect all top-let 
-  for top_let in top_lets {
+  for top_let in top_lets.values() {
     let { name, ty, .. } = top_let
+    dup_check(name)
     self.type_env.set(name, ty.kind)
   }
 
@@ -22,15 +31,16 @@ pub fn Context::typecheck_program(self : Self) -> Unit raise TypeCheckError {
   // 4. collect all enum definitions TODO
 
   // 5. collect all function definitions' signatures
-  for func in top_functions {
+  for func in top_functions.values() {
     let { param_list, ret_ty, fname, .. } = func
     let param_tys = param_list.map(p => p.ty.kind)
     let fty : TypeKind = Function(param_tys, ret_ty.kind)
+    dup_check(fname)
     self.type_env.set(fname, fty)
   }
 
   // 6. typecheck all function bodies
-  for func in top_functions {
+  for func in top_functions.values() {
     self.typecheck_function(func)
   }
 }
