@@ -311,9 +311,9 @@ test "Top Let Parsing" {
 
 test "Let Stmt Parsing" {
   let code = 
-    #|let x : Int = 33;
-    #|let y = true;
-    #|let tup : (Int, Double) = (1, 2.0);
+    #|let x : Int = 33
+    #|let y = true
+    #|let tup : (Int, Double) = (1, 2.0)
 
   let ctx = Context::new(code)
   ctx..tokenize()
@@ -348,7 +348,7 @@ test "Let Stmt Parsing" {
 }
 
 test "let mut Stmt Parsing" {
-  let code = "let mut counter: Int = 0;"
+  let code = "let mut counter: Int = 0"
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -365,9 +365,9 @@ test "let mut Stmt Parsing" {
 
 test "assign Stmt Parsing" {
   let code = 
-    #|a[0].field += 1;
-    #|y -= 2;
-    #|foo *= 3;
+    #|a[0].field += 1
+    #|y -= 2
+    #|foo *= 3
   let ctx = Context::new(code)
   ctx .. tokenize()
   let toks = ctx.tokens[:]
@@ -411,30 +411,29 @@ test "assign Stmt Parsing" {
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
-//test "Block Expr Parsing" {
-//  let code = 
-//    #|{
-//    #|  let x: Int = 10;
-//    #|  let y = 20;
-//    #|  x + y
-//    #|}
-//  let ctx = Context::new(code)
-//  ctx..tokenize()
-//  let { tokens, .. } = ctx
-//  let (e, tok_view) = ctx.parse_block_expr(tokens[:])
-//  assert_true(
-//    e.stmts.length() is 2 &&
-//    e.stmts[0].kind is LetStmt(_) &&
-//    e.stmts[1].kind is LetStmt(_) &&
-//    e.expr is Some(ret) &&
-//    ret.kind is BinaryExpr(Add, left, right) &&
-//    left.kind is ApplyExpr(a1) &&
-//    a1.kind is AtomExpr(a1) &&
-//    a1.kind is Ident("x") &&
-//    right.kind is ApplyExpr(a2) &&
-//    a2.kind is AtomExpr(a2) &&
-//    a2.kind is Ident("y")
-//  )
-//  assert_true(tok_view is [{ kind: EOF, .. }])
-//
-//}
+test "Block Expr Parsing" {
+  let code = 
+    #|{
+    #|  let x: Int = 10;
+    #|  let y = 20;
+    #|  x + y
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (e, tok_view) = ctx.parse_block_expr(tokens[:])
+  assert_true(
+    e.stmts.length() is 2 &&
+    e.stmts[0].kind is LetStmt(_) &&
+    e.stmts[1].kind is LetStmt(_) &&
+    e.final_expr is Some(ret) &&
+    ret.kind is BinaryExpr(Add, left, right) &&
+    left.kind is ApplyExpr(a1) &&
+    a1.kind is AtomExpr(a1) &&
+    a1.kind is Ident("x") &&
+    right.kind is ApplyExpr(a2) &&
+    a2.kind is AtomExpr(a2) &&
+    a2.kind is Ident("y")
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}

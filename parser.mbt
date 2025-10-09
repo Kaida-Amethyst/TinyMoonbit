@@ -906,7 +906,7 @@ pub struct BlockExpr {
   end_column : Int
   ty : TypeKind?
   stmts : Array[Stmt]
-  expr : Expr?
+  final_expr : Expr?
 } derive(Show, Eq)
 
 ///|
@@ -919,6 +919,7 @@ pub fn Context::parse_block_expr(
     panic()
   }
   let stmts : Array[Stmt] = Array::new()
+  let mut final_expr : Expr? = None
   let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Bracket('}'), lineno, column }, .. rest] =>
       break (rest, lineno, column)
@@ -928,7 +929,24 @@ pub fn Context::parse_block_expr(
     }
     tokens => {
       let (stmt, rest) = self.parse_stmt(tokens)
-      stmts.push(stmt)
+      let rest = if !(stmt.kind is ExprStmt(_)) {
+        guard rest is [{ kind: SemiColon, .. }, ..rest] else {
+          raise ParseError((rest[0], "Expect ';'"))
+        }
+        stmts.push(stmt)
+        rest
+      } else {
+        if rest is [{ kind: SemiColon, .. }, ..rest] {
+          stmts.push(stmt)
+          rest
+        } else if rest is [{kind: Bracket('}'), ..}, ..] {
+          guard stmt.kind is ExprStmt(expr)
+          final_expr = Some(expr)
+          rest
+        } else {
+          raise ParseError((rest[0], "Expect ';' or '}'"))
+        }
+      }
       continue rest
     }
   }
@@ -939,7 +957,7 @@ pub fn Context::parse_block_expr(
     end_column,
     ty: None,
     stmts,
-    expr: None,
+    final_expr,
   }
   (block_expr, tokens)
 }
@@ -1371,18 +1389,14 @@ pub fn Context::parse_stmt(
         (stmt, rest)
       } else {
         let (expr, rest) = self.parse_expr(tokens)
-        guard rest
-          is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
-          raise ParseError((rest[0], "Expect ';'"))
-        }
         let stmt = Stmt::{
           lineno: expr.lineno,
           column: expr.column,
-          end_lineno,
-          end_column,
+          end_lineno: expr.end_lineno,
+          end_column: expr.end_column,
           kind: StmtKind::ExprStmt(expr),
         }
-        (stmt, rest[1:])
+        (stmt, rest)
       }
     }
     [{ kind: Keyword(While), .. }, ..] as tokens => {
@@ -1478,15 +1492,11 @@ pub fn Context::parse_let_stmt(
     raise ParseError((tokens[0], "Expect '='"))
   }
   let (expr, tokens) = self.parse_expr(tokens)
-  guard tokens
-    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect ';'"))
-  }
   let let_stmt = LetStmt::{
     lineno,
     column,
-    end_lineno,
-    end_column,
+    end_lineno: expr.end_lineno,
+    end_column: expr.end_column,
     pattern,
     ty,
     expr,
@@ -1551,15 +1561,11 @@ pub fn Context::parse_let_mut_stmt(
     raise ParseError((tokens[0], "Expect '='"))
   }
   let (expr, tokens) = self.parse_expr(tokens)
-  guard tokens
-    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect ';'"))
-  }
   let let_mut_stmt = LetMutStmt::{
     lineno,
     column,
-    end_lineno,
-    end_column,
+    end_lineno: expr.end_lineno,
+    end_column: expr.end_column,
     name,
     ty,
     expr,
@@ -1576,7 +1582,7 @@ pub fn Context::parse_let_mut_stmt(
 ///  let ctx = Context::new(code)
 ///  ctx..tokenize()
 ///  let { tokens, .. } = ctx
-///  let (stmt, tok_view) = ctx.parse_assign_stmt(tokens[:])
+///  let (stmt, _) = ctx.parse_assign_stmt(tokens[:])
 ///  assert_true(stmt.left_value is {kind: Ident("y"), ..})
 ///  assert_true(
 ///    stmt.expr is {kind: BinaryExpr(Add, e1, e2), ..} &&
@@ -1587,7 +1593,6 @@ pub fn Context::parse_let_mut_stmt(
 ///    a2 is {kind: AtomExpr(a2), ..} &&
 ///    a2 is {kind: Int(1), ..}
 ///  )
-///  assert_true(tok_view is [{ kind: EOF, .. }])
 /// ```
 pub struct AssignStmt {
   lineno : Int
@@ -1609,15 +1614,11 @@ pub fn Context::parse_assign_stmt(
     raise ParseError((tokens[0], "Expect an assign operator"))
   }
   let (expr, tokens) = self.parse_expr(tokens)
-  guard tokens
-    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..tokens] else {
-    raise ParseError((tokens[0], "Expect ';'"))
-  }
   let assign_stmt = AssignStmt::{
     lineno: left_value.lineno,
     column: left_value.column,
-    end_lineno,
-    end_column,
+    end_lineno: expr.end_lineno,
+    end_column: expr.end_column,
     left_value,
     op,
     expr,
