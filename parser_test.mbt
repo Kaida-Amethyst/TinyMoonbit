@@ -140,6 +140,301 @@ test "ApplyExpr Parsing" {
   assert_true(e.kind is FieldAccess(_))
   let (e, tok_view) = ctx.parse_apply_expr(tok_view)
   assert_true(e.kind is Call(_))
-  let (e, _) = ctx.parse_apply_expr(tok_view)
+  let (e, tok_view) = ctx.parse_apply_expr(tok_view)
   assert_true(e.kind is Call(_))
+  assert_true(tok_view is [{ kind: EOF, .. }])
 }
+
+test "Binary Expr Parsing" {
+  let code = "1 + 2 * 3"
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (e, tok_view) = ctx.parse_expr(tokens[:])
+  assert_true(
+    e.kind is BinaryExpr(Add, e1, e2) &&
+    e1.kind is ApplyExpr(e1) &&
+    e2.kind is BinaryExpr(Mul, e3, e4) &&
+    e1.kind is AtomExpr(a1) &&
+    e3.kind is ApplyExpr(e3) &&
+    e4.kind is ApplyExpr(e4) &&
+    e3.kind is AtomExpr(a2) &&
+    e4.kind is AtomExpr(a3) &&
+    a1.kind is Int(1) &&
+    a2.kind is Int(2) &&
+    a3.kind is Int(3)
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "Array Expr Parsing" {
+  let code = 
+    #|[1, 2, 3]
+    #|[4, 5, 6,]
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  // First array
+  let (e, tok_view) = ctx.parse_atom_expr(tokens[:])
+  assert_true(
+    e.kind is Array(elements) &&
+    elements.length() is 3 &&
+    elements[0] is { kind: ApplyExpr(a1), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(1), .. } &&
+    elements[1] is { kind: ApplyExpr(a2), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(2), .. } &&
+    elements[2] is { kind: ApplyExpr(a3), .. } &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Int(3), .. }
+  )
+
+  // Second array
+  let (e, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(
+    e.kind is Array(elements) &&
+    elements.length() is 3 &&
+    elements[0] is { kind: ApplyExpr(a1), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(4), .. } &&
+    elements[1] is { kind: ApplyExpr(a2), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(5), .. } &&
+    elements[2] is { kind: ApplyExpr(a3), .. } &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Int(6), .. }
+  )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "Tuple or Paren Expr Parsing" {
+  let code = 
+    #|(1, 2, 3)
+    #|(4, 5, 6,)
+    #|(x)
+    #|(y,)
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  // First tuple
+  let (e, tok_view) = ctx.parse_atom_expr(tokens[:])
+  assert_true(
+    e.kind is Tuple(elements) &&
+    elements.length() is 3 &&
+    elements[0] is { kind: ApplyExpr(a1), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(1), .. } &&
+    elements[1] is { kind: ApplyExpr(a2), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(2), .. } &&
+    elements[2] is { kind: ApplyExpr(a3), .. } &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Int(3), .. }
+  )
+
+  // Second tuple
+  let (e, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(
+    e.kind is Tuple(elements) &&
+    elements.length() is 3 &&
+    elements[0] is { kind: ApplyExpr(a1), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(4), .. } &&
+    elements[1] is { kind: ApplyExpr(a2), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(5), .. } &&
+    elements[2] is { kind: ApplyExpr(a3), .. } &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Int(6), .. }
+  )
+
+  // Third paren
+  let (e, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(
+    e.kind is Paren(a) &&
+    a.kind is ApplyExpr(a) &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Ident("x"), .. }
+  )
+
+  // Fourth paren
+  let (e, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(
+    e.kind is Paren(a) &&
+    a.kind is ApplyExpr(a) &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Ident("y"), .. }
+  )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+
+}
+
+test "Extern Function Parsing" {
+  let code = #|extern fn foo(a: Int, b: Float) -> Bool = "CFoo";
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (ext_fn, tok_view) = ctx.parse_extern_function(tokens[:])
+  assert_true(ext_fn.fname is "foo")
+  assert_true(ext_fn.ffi_name is "CFoo")
+  assert_true(ext_fn.params.length() is 2)
+  assert_true(ext_fn.params[0] is { name: "a", ty: { kind: Int, .. }, .. })
+  assert_true(ext_fn.params[1] is { name: "b", ty: { kind: Float, .. }, .. })
+  assert_true(ext_fn.ret_ty is { kind: Bool, .. })
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "Top Let Parsing" {
+  let code = "let x: Int = 42;"
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (top_let, tok_view) = ctx.parse_top_let(tokens[:])
+  assert_true(top_let.name is "x")
+  assert_true(top_let.ty is { kind: Int, .. })
+  assert_true(
+    top_let.expr is {kind: ApplyExpr(a), ..} &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Int(42), ..}
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "Let Stmt Parsing" {
+  let code = 
+    #|let x : Int = 33;
+    #|let y = true;
+    #|let tup : (Int, Double) = (1, 2.0);
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  // First let
+  let (stmt, tok_view) = ctx.parse_let_stmt(tokens[:])
+  assert_true(stmt.pattern is { kind: Ident("x"), .. })
+  assert_true(stmt.ty is Some({ kind: Int, .. }) )
+  assert_true(
+    stmt.expr is {kind: ApplyExpr(a), ..} &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Int(33), ..}
+  )
+  // Second let
+  let (stmt, tok_view) = ctx.parse_let_stmt(tok_view)
+  assert_true(stmt.pattern is { kind: Ident("y"), .. })
+  assert_true(stmt.ty is None)
+  assert_true(
+    stmt.expr is {kind: ApplyExpr(a), ..} &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Bool(true), ..}
+  )
+
+  // Third let
+  let (stmt, tok_view) = ctx.parse_let_stmt(tok_view)
+  assert_true(stmt.pattern is { kind: Ident("tup"), .. })
+  assert_true(stmt.ty is Some({ kind: Tuple(_), .. }) )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "let mut Stmt Parsing" {
+  let code = "let mut counter: Int = 0;"
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (stmt, tok_view) = ctx.parse_let_mut_stmt(tokens[:])
+  assert_true(stmt.name is "counter")
+  assert_true(stmt.ty is Some({ kind: Int, .. }) )
+  assert_true(
+    stmt.expr is {kind: ApplyExpr(a), ..} &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Int(0), ..}
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "assign Stmt Parsing" {
+  let code = 
+    #|a[0].field += 1;
+    #|y -= 2;
+    #|foo *= 3;
+  let ctx = Context::new(code)
+  ctx .. tokenize()
+  let toks = ctx.tokens[:]
+
+  // First assign
+  let (assign_stmt, tok_view) = ctx.parse_assign_stmt(toks)
+  assert_true(assign_stmt.op is PlusAssign)
+  assert_true(
+    assign_stmt.left_value is { kind: FieldAccess(lv, "field"), ..} &&
+    lv is { kind: ArrayAccess(lv2, idx), ..} &&
+    lv2 is { kind: Ident("a"), ..} &&
+    idx is { kind: ApplyExpr(a), ..} &&
+    a is { kind: AtomExpr(a), ..} &&
+    a is { kind: Int(0), ..}
+  )
+  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
+    a is { kind: AtomExpr(a), ..} &&
+    a is { kind: Int(1), ..}
+  )
+
+  // Second assign
+  let (assign_stmt, tok_view) = ctx.parse_assign_stmt(tok_view)
+  assert_true(assign_stmt.op is MinusAssign)
+  assert_true(
+    assign_stmt.left_value is { kind: Ident("y"), ..}
+  )
+  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
+    a is { kind: AtomExpr(a), ..} &&
+    a is { kind: Int(2), ..}
+  )
+  // Third assign
+  let (assign_stmt, tok_view) = ctx.parse_assign_stmt(tok_view)
+  assert_true(assign_stmt.op is MultAssign)
+  assert_true(assign_stmt.left_value is { kind: Ident("foo"), ..})
+  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
+    a is { kind: AtomExpr(a), ..} &&
+    a is { kind: Int(3), ..}
+  )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+//test "Block Expr Parsing" {
+//  let code = 
+//    #|{
+//    #|  let x: Int = 10;
+//    #|  let y = 20;
+//    #|  x + y
+//    #|}
+//  let ctx = Context::new(code)
+//  ctx..tokenize()
+//  let { tokens, .. } = ctx
+//  let (e, tok_view) = ctx.parse_block_expr(tokens[:])
+//  assert_true(
+//    e.stmts.length() is 2 &&
+//    e.stmts[0].kind is LetStmt(_) &&
+//    e.stmts[1].kind is LetStmt(_) &&
+//    e.expr is Some(ret) &&
+//    ret.kind is BinaryExpr(Add, left, right) &&
+//    left.kind is ApplyExpr(a1) &&
+//    a1.kind is AtomExpr(a1) &&
+//    a1.kind is Ident("x") &&
+//    right.kind is ApplyExpr(a2) &&
+//    a2.kind is AtomExpr(a2) &&
+//    a2.kind is Ident("y")
+//  )
+//  assert_true(tok_view is [{ kind: EOF, .. }])
+//
+//}

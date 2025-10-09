@@ -621,11 +621,30 @@ pub struct TopLet {
   end_lineno : Int
   end_column : Int
   name : String
-  ty : Type?
+  ty : Type
   expr : Expr
 }
 
 ///|
+///
+/// Ast - Top Let
+///
+/// ```mbt
+/// let code = "let x: Int = 42;"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (top_let, _) = ctx.parse_top_let(toks)
+///
+/// assert_true(top_let.name is "x")
+/// assert_true(top_let.ty is {kind: Int, ..})
+/// assert_true(
+///   top_let.expr is {kind: ApplyExpr(a), ..} &&
+///   a is {kind: AtomExpr(a), ..} &&
+///   a is {kind: Int(42), ..}
+/// )
+/// ```
 pub fn Context::parse_top_let(
   self : Self,
   tokens : ArrayView[Token],
@@ -637,15 +656,10 @@ pub fn Context::parse_top_let(
   guard tokens is [{ kind: Lower(name), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
-  let (ty, tokens) = if tokens is [{ kind: Colon, .. }, .. tokens] {
-    guard tokens is [{ kind: Upper(_), .. }, ..] else {
-      raise ParseError((tokens[0], "Expect a type name"))
-    }
-    let (ty, tokens) = self.parse_type(tokens[1:])
-    (Some(ty), tokens)
-  } else {
-    (None, tokens)
+  guard tokens is [{ kind: Colon, .. }, .. tokens] else {
+    raise ParseError((tokens[0], "Expect ':'"))
   }
+  let (ty, tokens) = self.parse_type(tokens)
   guard tokens is [{ kind: AssignOp(Assign), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect '='"))
   }
@@ -905,7 +919,7 @@ pub fn Context::parse_block_expr(
     panic()
   }
   let stmts : Array[Stmt] = Array::new()
-  let (tokens, end_lineno, end_column) = loop tokens[1:] {
+  let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Bracket('}'), lineno, column }, .. rest] =>
       break (rest, lineno, column)
     [] => {
@@ -1259,7 +1273,7 @@ fn Context::parse_array_expr(
     panic()
   }
   let exprs : Array[Expr] = Array::new()
-  let (tokens, end_lineno, end_column) = loop tokens[1:] {
+  let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Bracket(']'), lineno, column }, .. rest] =>
       break (rest, lineno, column)
     [{ kind: Comma, .. }, { kind: Bracket(']'), lineno, column }, .. rest] =>
@@ -1416,6 +1430,24 @@ pub fn Context::parse_stmt(
 }
 
 ///|
+///
+/// Ast - Let Statement
+///
+/// ```mbt
+/// let code = "let y: Int = 42;"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (let_stmt, _) = ctx.parse_let_stmt(toks)
+/// assert_true(let_stmt.pattern is {kind: Ident("y"), ..})
+/// assert_true(let_stmt.ty is Some({kind: Int, ..}))
+/// assert_true(
+///   let_stmt.expr is {kind: ApplyExpr(a), ..} &&
+///   a is {kind: AtomExpr(a), ..} &&
+///   a is {kind: Int(42), ..}
+/// )
+/// ```
 pub struct LetStmt {
   lineno : Int
   column : Int
@@ -1437,10 +1469,7 @@ pub fn Context::parse_let_stmt(
   }
   let (pattern, tokens) = self.parse_pattern(tokens)
   let (ty, tokens) = if tokens is [{ kind: Colon, .. }, .. tokens] {
-    guard tokens is [{ kind: Upper(_), .. }, ..] else {
-      raise ParseError((tokens[0], "Expect a type name"))
-    }
-    let (ty, tokens) = self.parse_type(tokens[1:])
+    let (ty, tokens) = self.parse_type(tokens)
     (Some(ty), tokens)
   } else {
     (None, tokens)
@@ -1466,6 +1495,25 @@ pub fn Context::parse_let_stmt(
 }
 
 ///|
+///
+/// Ast - Let Mut Statement
+///
+/// ```mbt
+/// let code = "let mut x: Int = 42;"
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+///
+/// let toks = ctx.tokens[:]
+/// let (let_mut_stmt, _) = ctx.parse_let_mut_stmt(toks)
+/// assert_true(let_mut_stmt.name is "x")
+///
+/// assert_true(let_mut_stmt.ty is Some({kind: Int, ..}))
+/// assert_true(
+///   let_mut_stmt.expr is {kind: ApplyExpr(a), ..} &&
+///   a is {kind: AtomExpr(a), ..} &&
+///   a is {kind: Int(42), ..}
+/// )
+/// ```
 pub struct LetMutStmt {
   lineno : Int
   column : Int
@@ -1494,10 +1542,7 @@ pub fn Context::parse_let_mut_stmt(
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
   let (ty, tokens) = if tokens is [{ kind: Colon, .. }, .. tokens] {
-    guard tokens is [{ kind: Upper(_), .. }, ..] else {
-      raise ParseError((tokens[0], "Expect a type name"))
-    }
-    let (ty, tokens) = self.parse_type(tokens[1:])
+    let (ty, tokens) = self.parse_type(tokens)
     (Some(ty), tokens)
   } else {
     (None, tokens)
@@ -1523,6 +1568,27 @@ pub fn Context::parse_let_mut_stmt(
 }
 
 ///|
+///
+/// Ast - Assign Statement
+///
+/// ```mbt
+///  let code = "y = x + 1;"
+///  let ctx = Context::new(code)
+///  ctx..tokenize()
+///  let { tokens, .. } = ctx
+///  let (stmt, tok_view) = ctx.parse_assign_stmt(tokens[:])
+///  assert_true(stmt.left_value is {kind: Ident("y"), ..})
+///  assert_true(
+///    stmt.expr is {kind: BinaryExpr(Add, e1, e2), ..} &&
+///    e1 is {kind: ApplyExpr(a1), ..} &&
+///    a1 is {kind: AtomExpr(a1), ..} &&
+///    a1 is {kind: Ident("x"), ..} &&
+///    e2 is {kind: ApplyExpr(a2), ..} &&
+///    a2 is {kind: AtomExpr(a2), ..} &&
+///    a2 is {kind: Int(1), ..}
+///  )
+///  assert_true(tok_view is [{ kind: EOF, .. }])
+/// ```
 pub struct AssignStmt {
   lineno : Int
   column : Int
@@ -1544,7 +1610,7 @@ pub fn Context::parse_assign_stmt(
   }
   let (expr, tokens) = self.parse_expr(tokens)
   guard tokens
-    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
+    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..tokens] else {
     raise ParseError((tokens[0], "Expect ';'"))
   }
   let assign_stmt = AssignStmt::{
@@ -1580,7 +1646,7 @@ pub fn Context::parse_left_value(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (LeftValue, ArrayView[Token]) raise ParseError {
-  guard tokens is [{ kind: Lower(ident), lineno, column }, ..] else {
+  guard tokens is [{ kind: Lower(ident), lineno, column }, ..tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
   let left_value = LeftValue::{
@@ -1591,10 +1657,10 @@ pub fn Context::parse_left_value(
     kind: LeftValueKind::Ident(ident),
   }
   if !(tokens is [{ kind: Bracket('[') | Dot, .. }, ..]) {
-    return (left_value, tokens[1:])
+    return (left_value, tokens)
   }
   let mut left_value = left_value
-  loop tokens[1:] {
+  loop tokens {
     [{ kind: Bracket('['), .. }, .. tokens] => {
       let (index_expr, tokens) = self.parse_expr(tokens)
       guard tokens is [{ kind: Bracket(']'), lineno, column }, .. tokens] else {
