@@ -9,8 +9,8 @@ pub fn Context::typecheck_program(self: Self, prog: Program) -> Unit raise TypeC
   // 1. collect all function signatures
   for ext in prog.extern_functions {
     let { params, ret_ty, fname, .. } = ext
-    let param_tys = params.map(p => p.ty)
-    let fty : TypeKind = Function(param_tys, ret_ty)
+    let param_tys = params.map(p => p.ty.kind)
+    let fty : TypeKind = Function(param_tys, ret_ty.kind)
     self.type_env.set(fname, fty)
   }
 
@@ -26,8 +26,8 @@ pub fn Context::typecheck_program(self: Self, prog: Program) -> Unit raise TypeC
   // 5. collect all function definitions' signatures
   for func in prog.top_functions {
     let { param_list, ret_ty, fname, .. } = func
-    let param_tys = param_list.map(p => p.ty)
-    let fty : TypeKind = Function(param_tys, ret_ty)
+    let param_tys = param_list.map(p => p.ty.kind)
+    let fty : TypeKind = Function(param_tys, ret_ty.kind)
     self.type_env.set(fname, fty)
   }
 
@@ -124,7 +124,7 @@ pub fn Context::bind_pattern(self: Self, pattern: Pattern, ty: TypeKind) -> Unit
         raise TypeCheckError("pattern and type length mismatch in tuple pattern")
       }
       for i in 0 ..<pats.length() {
-        self.bind_pattern(pats[i], tys[i].kind)
+        self.bind_pattern(pats[i], tys[i])
       }
     }
     _ => {

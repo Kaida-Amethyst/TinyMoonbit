@@ -222,12 +222,7 @@ pub fn Context::parse_top_function(
 /// let (ty, _) = ctx.parse_type(toks)
 ///
 /// assert_true(
-///   ty is {kind: Function([
-///     {kind: Int, ..},
-///     {kind: Int64, ..},
-///     {kind: Float, ..},
-///     {kind: Double,..}
-///   ], {kind: UInt, ..}), ..}
+///   ty is {kind: Function([Int, Int64, Float, Double], UInt), ..}
 /// )
 /// ```
 pub struct Type {
@@ -249,10 +244,10 @@ pub enum TypeKind {
   Float
   Double
   String
-  Tuple(Array[Type])
-  Array(Type)
-  Function(Array[Type], Type)
-  Defined(String, Array[Type]) // Array[Int], Map[String, Int]
+  Tuple(Array[TypeKind])
+  Array(TypeKind)
+  Function(Array[TypeKind], TypeKind)
+  Defined(String, Array[TypeKind]) // Array[Int], Map[String, Int]
 } derive(Show)
 
 ///|
@@ -386,22 +381,22 @@ pub impl Eq for TypeKind with equal(self, other) {
       tys1.length() == tys2.length() &&
       tys1.zip(tys2)
           .iter()
-          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind))
+          .all(tpair => tpair is (t1, t2) && t1.equal(t2))
     }
-    (Array(ty1), Array(ty2)) => ty1.kind.equal(ty2.kind)
+    (Array(ty1), Array(ty2)) => ty1.equal(ty2)
     (Function(param_tys1, ret_ty1), Function(param_tys2, ret_ty2)) => {
       param_tys1.length() == param_tys2.length() &&
       param_tys1.zip(param_tys2)
           .iter()
-          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind)) &&
-      ret_ty1.kind.equal(ret_ty2.kind)
+          .all(tpair => tpair is (t1, t2) && t1.equal(t2)) &&
+      ret_ty1.equal(ret_ty2)
     }
     (Defined(name1, sub_tys1), Defined(name2, sub_tys2)) => {
       name1 == name2 &&
       sub_tys1.length() == sub_tys2.length() &&
       sub_tys1.zip(sub_tys2)
           .iter()
-          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind))
+          .all(tpair => tpair is (t1, t2) && t1.equal(t2))
     }
     _ => false
   }
@@ -420,12 +415,7 @@ pub impl Eq for TypeKind with equal(self, other) {
 /// let (ty, _) = ctx.parse_type(toks) // call parse_tuple_or_function_type inside
 ///
 /// assert_true(
-///   ty is {kind: Function([
-///     {kind: Int, ..},
-///     {kind: Int64, ..},
-///     {kind: Float, ..},
-///     {kind: Double,..}
-///     ], {kind: UInt, ..}), ..}
+///   ty is {kind: Function([Int, Int64, Float, Double], UInt), ..}
 /// )
 /// ```
 fn Context::parse_tuple_or_function_type(
@@ -436,16 +426,16 @@ fn Context::parse_tuple_or_function_type(
     println("Compiler ICE: Misuse parse_tuple_or_function_type")
     panic()
   }
-  let tys : Array[Type] = Array::new()
+  let tys : Array[TypeKind] = Array::new()
   let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Upper(_) | Bracket('('), .. }, ..] as tokens => {
       let (ty, rest) = self.parse_type(tokens)
-      tys.push(ty)
+      tys.push(ty.kind)
       continue rest
     }
     [{ kind: Comma, .. }, { kind: Upper(_) | Bracket('('), .. }, ..] as tokens => {
       let (ty, rest) = self.parse_type(tokens[1:])
-      tys.push(ty)
+      tys.push(ty.kind)
       continue rest
     }
     [{ kind: Bracket(')'), lineno, column }, .. rest] =>
@@ -460,7 +450,7 @@ fn Context::parse_tuple_or_function_type(
     let (ret_ty, rest) = self.parse_type(tokens)
     (
       Type::{
-        kind: Function(tys, ret_ty),
+        kind: Function(tys, ret_ty.kind),
         lineno,
         column,
         end_lineno: ret_ty.end_lineno,
@@ -485,7 +475,7 @@ fn Context::parse_tuple_or_function_type(
 /// let toks = ctx.tokens[:]
 /// let (ty, _) = ctx.parse_type(toks) // call parse_defined_type inside
 ///
-/// assert_true(ty is {kind: Defined("Map", [{kind: Int, ..}, {kind: String, ..}]), ..})
+/// assert_true(ty is {kind: Defined("Map", [Int, String]), ..})
 /// ```
 fn Context::parse_defined_type(
   self : Self,
@@ -496,18 +486,18 @@ fn Context::parse_defined_type(
     println("Compiler ICE: Defined Type Must start with Upper Ident")
     panic()
   }
-  let tys : Array[Type] = Array::new()
+  let tys : Array[TypeKind] = Array::new()
   let (tokens, end_lineno, end_column) = if tokens
     is [{ kind: Bracket('['), .. }, .. tokens] {
     loop tokens {
       [{ kind: Upper(_), .. }, ..] as tokens => {
         let (sub_ty, tokens) = self.parse_type(tokens)
-        tys.push(sub_ty)
+        tys.push(sub_ty.kind)
         continue tokens
       }
       [{ kind: Comma, .. }, { kind: Upper(_), .. }, ..] as tokens => {
         let (sub_ty, tokens) = self.parse_type(tokens[1:])
-        tys.push(sub_ty)
+        tys.push(sub_ty.kind)
         continue tokens
       }
       [{ kind: Bracket(']'), lineno, column }, .. tokens] =>
