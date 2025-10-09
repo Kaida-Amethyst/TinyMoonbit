@@ -437,3 +437,191 @@ test "Block Expr Parsing" {
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
+
+test "If Expr Parsing" {
+  let code = 
+    #|if true {
+    #|  1
+    #|} else {
+    #|  0
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (e, tok_view) = ctx.parse_if_expr(tokens[:])
+  assert_true(
+    e.cond.kind is ApplyExpr(a) &&
+    a.kind is AtomExpr(a) &&
+    a.kind is Bool(true) &&
+    e.then_block.stmts.length() is 0 &&
+    e.then_block.final_expr is Some(then_ret) &&
+    then_ret.kind is ApplyExpr(then_a) &&
+    then_a.kind is AtomExpr(then_a) &&
+    then_a.kind is Int(1) &&
+    e.else_block is Some(Right(else_block)) &&
+    else_block.stmts.length() is 0 &&
+    else_block.final_expr is Some(else_ret) &&
+    else_ret.kind is ApplyExpr(else_a) &&
+    else_a.kind is AtomExpr(else_a) &&
+    else_a.kind is Int(0)
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+
+  // else if
+  let code = 
+    #|if a > b {
+    #|  a
+    #|} else if a == b {
+    #|  0
+    #|} else {
+    #|  b
+    #|}
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (e, _) = ctx.parse_if_expr(tokens[:])
+
+  assert_true(
+    e.cond.kind is BinaryExpr(GT, left, right) &&
+    left.kind is ApplyExpr(a1) &&
+    a1.kind is AtomExpr(a1) &&
+    a1.kind is Ident("a") &&
+    right.kind is ApplyExpr(a2) &&
+    a2.kind is AtomExpr(a2) &&
+    a2.kind is Ident("b") &&
+    e.then_block.stmts.length() is 0 &&
+    e.then_block.final_expr is Some(then_ret) &&
+    then_ret.kind is ApplyExpr(then_a) &&
+    then_a.kind is AtomExpr(then_a) &&
+    then_a.kind is Ident("a") &&
+    e.else_block is Some(Left(else_if)) &&
+
+    else_if.cond.kind is BinaryExpr(Eq, left2, right2) &&
+    left2.kind is ApplyExpr(a3) &&
+    a3.kind is AtomExpr(a3) &&
+    a3.kind is Ident("a") &&
+    right2.kind is ApplyExpr(a4) &&
+    a4.kind is AtomExpr(a4) &&
+    a4.kind is Ident("b") &&
+
+    else_if.then_block.stmts.length() is 0 &&
+    else_if.then_block.final_expr is Some(else_if_ret) &&
+    else_if_ret.kind is ApplyExpr(else_if_a) &&
+    else_if_a.kind is AtomExpr(else_if_a) &&
+    else_if_a.kind is Int(0) &&
+
+    else_if.else_block is Some(Right(else_block)) &&
+    else_block.stmts.length() is 0 &&
+    else_block.final_expr is Some(else_ret) &&
+    else_ret.kind is ApplyExpr(else_a) &&
+    else_a.kind is AtomExpr(else_a) &&
+    else_a.kind is Ident("b")
+  )
+}
+
+test "While Stmt Parsing" {
+  let code = 
+    #|while i < 10 {
+    #|  i += 1;
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (stmt, tok_view) = ctx.parse_while_stmt(tokens[:])
+  assert_true(
+    stmt.cond.kind is BinaryExpr(LT, left, right) &&
+    left.kind is ApplyExpr(a1) &&
+    a1.kind is AtomExpr(a1) &&
+    a1.kind is Ident("i") &&
+    right.kind is ApplyExpr(a2) &&
+    a2.kind is AtomExpr(a2) &&
+    a2.kind is Int(10) &&
+    stmt.body.stmts.length() is 1 &&
+    stmt.body.final_expr is None &&
+    stmt.body.stmts[0].kind is AssignStmt(assign) &&
+    assign.op is PlusAssign &&
+    assign.left_value.kind is Ident("i") &&
+    assign.expr.kind is ApplyExpr(a3) &&
+    a3.kind is AtomExpr(a3) &&
+    a3.kind is Int(1)
+  )
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
+test "For Stmt Parsing" {
+  let code =
+    #|for i = 0; i < 10; i += 1 {
+    #|  println(i);
+    #|}
+
+  let ctx = Context::new(code)
+  ctx .. tokenize()
+  let toks = ctx.tokens[:]
+
+  let (for_stmt, _) = ctx.parse_for_stmt(toks)
+  assert_true(for_stmt.inits.length() is 1)
+  assert_true(
+    for_stmt.inits[0] is ("i", {kind: ApplyExpr(a), ..}) &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Int(0), ..}
+  )
+  assert_true(
+    for_stmt.cond is Some({kind: BinaryExpr(LT, left, right), ..}) &&
+    left is {kind: ApplyExpr(a1), ..} &&
+    right is {kind: ApplyExpr(a2), ..} &&
+    a1 is {kind: AtomExpr(a1), ..} &&
+    a1 is {kind: Ident("i"), ..} &&
+    a2 is {kind: AtomExpr(a2), ..} &&
+    a2 is {kind: Int(10), ..}
+  )
+  assert_true(for_stmt.steps.length() is 1)
+  assert_true(
+    for_stmt.steps[0] is ("i", PlusAssign, {kind: ApplyExpr(a), ..}) &&
+    a is {kind: AtomExpr(a), ..} &&
+    a is {kind: Int(1), ..}
+  )
+
+  // fib
+  let code = 
+    #|for i = 0, j = 1; i < 50; i = j, j = i + j {
+    #|  println(i);
+    #|}
+
+  let ctx = Context::new(code)
+  ctx .. tokenize()
+  let toks = ctx.tokens[:]
+
+  let (for_stmt, _) = ctx.parse_for_stmt(toks)
+  assert_true(for_stmt.inits.length() is 2)
+  assert_true(
+    for_stmt.inits[0] is ("i", {kind: ApplyExpr(a1), ..}) &&
+    a1 is {kind: AtomExpr(a1), ..} &&
+    a1 is {kind: Int(0), ..} &&
+    for_stmt.inits[1] is ("j", {kind: ApplyExpr(a2), ..}) &&
+    a2 is {kind: AtomExpr(a2), ..} &&
+    a2 is {kind: Int(1), ..}
+  )
+  assert_true(
+    for_stmt.cond is Some({kind: BinaryExpr(LT, left, right), ..}) &&
+    left is {kind: ApplyExpr(a1), ..} &&
+    right is {kind: ApplyExpr(a2), ..} &&
+    a1 is {kind: AtomExpr(a1), ..} &&
+    a1 is {kind: Ident("i"), ..} &&
+    a2 is {kind: AtomExpr(a2), ..} &&
+    a2 is {kind: Int(50), ..}
+  )
+  assert_true(for_stmt.steps.length() is 2)
+  assert_true(
+    for_stmt.steps[0] is ("i", Assign, {kind: ApplyExpr(a1), ..}) &&
+    a1 is {kind: AtomExpr(a1), ..} &&
+    a1 is {kind: Ident("j"), ..} &&
+    for_stmt.steps[1] is ("j", Assign, {kind: BinaryExpr(Add, left, right), ..}) &&
+    left is {kind: ApplyExpr(a3), ..} &&
+    a3 is {kind: AtomExpr(a3), ..} &&
+    a3 is {kind: Ident("i"), ..} &&
+    right is {kind: ApplyExpr(a4), ..} &&
+    a4 is {kind: AtomExpr(a4), ..} &&
+    a4 is {kind: Ident("j"), ..}
+  )
+}

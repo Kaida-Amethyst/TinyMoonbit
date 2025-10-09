@@ -666,7 +666,7 @@ pub fn Context::parse_top_let(
   let (expr, tokens) = self.parse_expr(tokens)
   guard tokens
     is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect ';'"))
+    raise ParseError((tokens[0], "Failed Parsing Top Let: Expect ';'"))
   }
   let top_let = TopLet::{
     lineno,
@@ -873,7 +873,7 @@ pub fn Context::parse_if_expr(
       guard tokens is [{ kind: Bracket('{'), .. }, ..] else {
         raise ParseError((tokens[1], "Expect '{' after else"))
       }
-      let (else_block, tokens) = self.parse_block_expr(tokens[1:])
+      let (else_block, tokens) = self.parse_block_expr(tokens)
       (Some(@either.Either::Right(else_block)), tokens)
     }
   } else {
@@ -931,7 +931,7 @@ pub fn Context::parse_block_expr(
       let (stmt, rest) = self.parse_stmt(tokens)
       let rest = if !(stmt.kind is ExprStmt(_)) {
         guard rest is [{ kind: SemiColon, .. }, ..rest] else {
-          raise ParseError((rest[0], "Expect ';'"))
+          raise ParseError((rest[0], "Failed Parsing Block Expr, Expect ';'"))
         }
         stmts.push(stmt)
         rest
@@ -944,7 +944,7 @@ pub fn Context::parse_block_expr(
           final_expr = Some(expr)
           rest
         } else {
-          raise ParseError((rest[0], "Expect ';' or '}'"))
+          raise ParseError((rest[0], "Failed Parsing BlockExpr, Expect ';' or '}'"))
         }
       }
       continue rest
@@ -1427,18 +1427,14 @@ pub fn Context::parse_stmt(
     }
     tokens => {
       let (expr, rest) = self.parse_expr(tokens)
-      guard rest
-        is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, ..] else {
-        raise ParseError((rest[0], "Expect ';'"))
-      }
       let stmt = Stmt::{
         lineno: expr.lineno,
         column: expr.column,
-        end_lineno,
-        end_column,
+        end_lineno: expr.end_lineno,
+        end_column: expr.end_column,
         kind: StmtKind::ExprStmt(expr),
       }
-      (stmt, rest[1:])
+      (stmt, rest)
     }
   }
 }
@@ -1691,6 +1687,37 @@ pub fn Context::parse_left_value(
 }
 
 ///|
+///
+/// Ast - While Statement
+///
+/// ```mbt
+///  let code = 
+///    #|while i < 10 {
+///    #|  i += 1;
+///    #|}
+///  let ctx = Context::new(code)
+///  ctx..tokenize()
+///  let { tokens, .. } = ctx
+///  let (stmt, tok_view) = ctx.parse_while_stmt(tokens[:])
+///  assert_true(
+///    stmt.cond.kind is BinaryExpr(LT, left, right) &&
+///    left.kind is ApplyExpr(a1) &&
+///    a1.kind is AtomExpr(a1) &&
+///    a1.kind is Ident("i") &&
+///    right.kind is ApplyExpr(a2) &&
+///    a2.kind is AtomExpr(a2) &&
+///    a2.kind is Int(10) &&
+///    stmt.body.stmts.length() is 1 &&
+///    stmt.body.final_expr is None &&
+///    stmt.body.stmts[0].kind is AssignStmt(assign) &&
+///    assign.op is PlusAssign &&
+///    assign.left_value.kind is Ident("i") &&
+///    assign.expr.kind is ApplyExpr(a3) &&
+///    a3.kind is AtomExpr(a3) &&
+///    a3.kind is Int(1)
+///  )
+///  assert_true(tok_view is [{ kind: EOF, .. }])
+/// ```
 pub struct WhileStmt {
   lineno : Int
   column : Int
@@ -1737,6 +1764,40 @@ pub struct ForStmt {
 ///|
 ///
 /// Ast - For Statement
+///
+/// ```mbt
+/// let code =
+///   #|for i = 0; i < 10; i += 1 {
+///   #|  println(i);
+///   #|}
+///
+/// let ctx = Context::new(code)
+/// ctx .. tokenize()
+/// let toks = ctx.tokens[:]
+///
+/// let (for_stmt, _) = ctx.parse_for_stmt(toks)
+/// assert_true(for_stmt.inits.length() is 1)
+/// assert_true(
+///   for_stmt.inits[0] is ("i", {kind: ApplyExpr(a), ..}) &&
+///   a is {kind: AtomExpr(a), ..} &&
+///   a is {kind: Int(0), ..}
+/// )
+/// assert_true(
+///   for_stmt.cond is Some({kind: BinaryExpr(LT, left, right), ..}) &&
+///   left is {kind: ApplyExpr(a1), ..} &&
+///   right is {kind: ApplyExpr(a2), ..} &&
+///   a1 is {kind: AtomExpr(a1), ..} &&
+///   a1 is {kind: Ident("i"), ..} &&
+///   a2 is {kind: AtomExpr(a2), ..} &&
+///   a2 is {kind: Int(10), ..}
+/// )
+/// assert_true(for_stmt.steps.length() is 1)
+/// assert_true(
+///   for_stmt.steps[0] is ("i", PlusAssign, {kind: ApplyExpr(a), ..}) &&
+///   a is {kind: AtomExpr(a), ..} &&
+///   a is {kind: Int(1), ..}
+/// )
+/// ```
 pub fn Context::parse_for_stmt(
   self : Self,
   tokens : ArrayView[Token],
@@ -1747,8 +1808,15 @@ pub fn Context::parse_for_stmt(
   }
   let inits : Array[(String, Expr)] = Array::new()
   let tokens = loop tokens {
-    [{ kind: Lower(name), .. }, { kind: AssignOp(Assign), .. }, ..] as tokens => {
-      let (expr, rest) = self.parse_expr(tokens[2:])
+    [{ kind: Lower(name), .. }, { kind: AssignOp(Assign), .. }, ..tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
+      inits.push((name, expr))
+      continue rest
+    }
+    [{kind: Comma, ..},
+     {kind: Lower(name), ..},
+    {kind: AssignOp(Assign), ..}, ..tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
       inits.push((name, expr))
       continue rest
     }
@@ -1761,14 +1829,21 @@ pub fn Context::parse_for_stmt(
   } else {
     let (expr, tokens) = self.parse_expr(tokens)
     guard tokens is [{ kind: SemiColon, .. }, .. tokens] else {
-      raise ParseError((tokens[0], "Expect ';'"))
+      raise ParseError((tokens[0], "Failed Parsing For Stmt, Expect ';'"))
     }
-    (Some(expr), tokens[1:])
+    (Some(expr), tokens)
   }
   let steps : Array[(String, AssignOp, Expr)] = Array::new()
   let tokens = loop tokens {
-    [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, ..] as tokens => {
-      let (expr, rest) = self.parse_expr(tokens[2:])
+    [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, ..tokens]=> {
+      let (expr, rest) = self.parse_expr(tokens)
+      steps.push((name, op, expr))
+      continue rest
+    }
+    [{kind: Comma, ..},
+     {kind: Lower(name), ..},
+     {kind: AssignOp(op), ..}, ..tokens] => {
+      let (expr, rest) = self.parse_expr(tokens)
       steps.push((name, op, expr))
       continue rest
     }
