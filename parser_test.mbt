@@ -598,3 +598,67 @@ test "For Stmt Parsing" {
     a4 is { kind: Ident("j"), .. },
   )
 }
+
+test "Struct Filed Parsing" {
+  let code =
+    #|field1: Int
+    #|field2: Float
+    #|field3: String
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (field, tok_view) = ctx.parse_struct_field(tokens[:])
+  assert_true(field is { name: "field1", ty: { kind: Int, .. }, .. })
+  let (field, tok_view) = ctx.parse_struct_field(tok_view)
+  assert_true(field is { name: "field2", ty: { kind: Float, .. }, .. })
+  let (field, _) = ctx.parse_struct_field(tok_view)
+  assert_true(field is { name: "field3", ty: { kind: String, .. }, .. })
+}
+
+test "Struct Def Parsing" {
+  let code =
+    #|struct Point {
+    #|  x: Int;
+    #|  y: Int
+    #|}
+    #|
+    #|struct Tri[T, U, K] {
+    #|  a: T
+    #|  b: U;
+    #|  c: K
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+  let (struct_def, tok_view) = ctx.parse_struct_def(tokens[:])
+  assert_true(struct_def.name is "Point")
+  assert_true(struct_def.generic_params.length() is 0)
+  assert_true(struct_def.fields.length() is 2)
+  assert_true(
+    struct_def.fields[0] is { name: "x", ty: { kind: Int, .. }, .. },
+  )
+  assert_true(
+    struct_def.fields[1] is { name: "y", ty: { kind: Int, .. }, .. },
+  )
+  // Second struct
+  let (struct_def, tok_view) = ctx.parse_struct_def(tok_view)
+  assert_true(struct_def.name is "Tri")
+  assert_true(struct_def.generic_params.length() is 3)
+  assert_true(
+    struct_def.generic_params is ["T", "U", "K"],
+  )
+  assert_true(struct_def.fields.length() is 3)
+  assert_true(
+    struct_def.fields[0] is { name: "a", ty: { kind: Defined("T", []), .. }, .. },
+  )
+  assert_true(
+    struct_def.fields[1] is { name: "b", ty: { kind: Defined("U", []), .. }, .. },
+  )
+  assert_true(
+    struct_def.fields[2] is { name: "c", ty: { kind: Defined("K", []), .. }, .. },
+  )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+

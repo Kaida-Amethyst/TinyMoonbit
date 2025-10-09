@@ -2008,7 +2008,7 @@ pub struct StructDef {
   end_column : Int
   name : String
   generic_params : Array[String]
-  fields : Array[(String, Type)]
+  fields : Array[StructField]
 } derive(Show, Eq)
 
 pub fn Context::parse_struct_def(
@@ -2019,7 +2019,7 @@ pub fn Context::parse_struct_def(
     println("Compiler ICE: Misuse parse_struct_def")
     panic()
   }
-  guard tokens is [{ kind: Upper(name), .. }, ..] else {
+  guard tokens is [{ kind: Upper(name), .. }, ..tokens] else {
     raise ParseError((tokens[0], "Expect struct name"))
   }
   let generic_params : Array[String] = Array::new()
@@ -2046,7 +2046,7 @@ pub fn Context::parse_struct_def(
   guard tokens is [{ kind: Bracket('{'), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Failed Parsing StructDef: Expect '{'"))
   }
-  let fields : Array[(String, Type)] = Array::new()
+  let fields : Array[StructField] = Array::new()
   let (tokens, end_lineno, end_column) = loop tokens {
     [{ kind: Bracket('}'), lineno, column }, .. rest] =>
       break (rest, lineno, column)
@@ -2055,8 +2055,8 @@ pub fn Context::parse_struct_def(
       panic()
     }
     tokens => {
-      let (field_name, field_type, rest) = self.parse_struct_field(tokens)
-      fields.push((field_name, field_type))
+      let (field, rest) = self.parse_struct_field(tokens)
+      fields.push(field)
       if rest is [{ kind: SemiColon, .. }, ..tokens] {
         continue tokens
       } else if !(rest is [{ kind: Bracket('}'), ..}, ..]) {
@@ -2064,7 +2064,7 @@ pub fn Context::parse_struct_def(
           println("Compiler ICE: Failed Parsing StructDef: Empty Token ArrayView")
           panic()
         }
-        guard tok.lineno > field_type.end_lineno else {
+        guard tok.lineno > field.end_lineno else {
           raise ParseError((tok, "Expect ',' or '}', or new line after struct field"))
         }
         continue rest
@@ -2085,16 +2085,33 @@ pub fn Context::parse_struct_def(
   (struct_def, tokens)
 }
 
+pub struct StructField {
+  lineno : Int
+  column : Int
+  end_lineno : Int
+  end_column : Int
+  name : String
+  ty : Type
+} derive(Show, Eq)
+
 pub fn Context::parse_struct_field(
   self : Self,
   tokens : ArrayView[Token],
-) -> (String, Type, ArrayView[Token]) raise ParseError {
-  guard tokens is [{ kind: Lower(field_name), ..}, .. tokens] else {
+) -> (StructField, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Lower(name), lineno, column }, .. tokens] else {
     raise ParseError((tokens[0], "Expect struct field name"))
   }
   guard tokens is [{ kind: Colon, .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect ':' after struct field name"))
   }
-  let (field_type, tokens) = self.parse_type(tokens)
-  (field_name, field_type, tokens)
+  let (ty, tokens) = self.parse_type(tokens)
+  let struct_field = StructField::{
+    lineno,
+    column,
+    end_lineno: ty.end_lineno,
+    end_column: ty.end_column,
+    name,
+    ty,
+  }
+  (struct_field, tokens)
 }
