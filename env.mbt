@@ -1,10 +1,11 @@
+///|
 pub struct Env[K, V] {
   parent : Env[K, V]?
   data : Map[K, V]
 }
 
 ///|
-pub fn[K, V] Env::new(parent~ : Env[K, V]? = None) -> Env[K, V] {
+pub fn[K, V] Env::new(parent? : Env[K, V]? = None) -> Env[K, V] {
   Env::{ parent, data: Map::new() }
 }
 
@@ -20,7 +21,8 @@ pub fn[K : Eq + Hash, V] Env::get(self : Self[K, V], key : K) -> V? {
   }
 }
 
-pub fn[K: Eq + Hash, V] Env::contains(self : Self[K, V], key : K) -> Bool {
+///|
+pub fn[K : Eq + Hash, V] Env::contains(self : Self[K, V], key : K) -> Bool {
   match self.data.get(key) {
     Some(_) => true
     None =>
@@ -31,6 +33,7 @@ pub fn[K: Eq + Hash, V] Env::contains(self : Self[K, V], key : K) -> Bool {
   }
 }
 
+///|
 pub fn[K, V] Env::sub_env(self : Self[K, V]) -> Env[K, V] {
   Env::new(parent=Some(self))
 }
@@ -50,12 +53,12 @@ pub fn[K, V] Env::sub_env(self : Self[K, V]) -> Env[K, V] {
 //  }
 //}
 //
+
 ///|
 pub fn[K : Eq + Hash, V] Env::set(
   self : Self[K, V],
   key : K,
-  value : V
+  value : V,
 ) -> Unit {
   self.data.set(key, value)
 }
-

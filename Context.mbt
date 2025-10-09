@@ -7,22 +7,21 @@ pub struct Context {
   tokens : Array[Token]
   fatal_errors : Array[ParseError] // stop type check
   normal_errors : Array[ParseError] // stop codegen
-
   top_functions : Array[TopFunction]
   extern_functions : Array[ExternFunction]
   top_lets : Array[TopLet]
   struct_defs : Array[StructDef]
   // enum_defs : Array[EnumDef]
 
-  mut type_env: Env[String, TypeKind]
-  mut current_func: TopFunction?
+  mut type_env : Env[String, TypeKind]
+  mut current_func : TopFunction?
 
   //
   source_file : String
 }
 
 ///|
-pub fn Context::new(code : String, source_file~: String = "demo") -> Context {
+pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
   Context::{
     code,
     tokens: Array::new(),
@@ -38,34 +37,39 @@ pub fn Context::new(code : String, source_file~: String = "demo") -> Context {
   }
 }
 
-pub fn Context::push_env(self: Self) -> Unit {
+///|
+pub fn Context::push_env(self : Self) -> Unit {
   self.type_env = self.type_env.sub_env()
 }
 
-pub fn Context::pop_env(self: Self) -> Unit {
+///|
+pub fn Context::pop_env(self : Self) -> Unit {
   self.type_env = self.type_env.parent.unwrap()
 }
 
-pub fn Context::set_env(self: Self, k: String, v: TypeKind) -> Unit {
+///|
+pub fn Context::set_env(self : Self, k : String, v : TypeKind) -> Unit {
   self.type_env.set(k, v)
 }
 
-pub fn Context::get_ident_type(self: Self, k: String) -> TypeKind? {
+///|
+pub fn Context::get_ident_type(self : Self, k : String) -> TypeKind? {
   self.type_env.get(k)
 }
 
-pub fn Context::print_error(self: Self, err: ParseError) -> Unit {
+///|
+pub fn Context::print_error(self : Self, err : ParseError) -> Unit {
   let ParseError((tok, msg)) = err
   let err_msg = self.get_error_msg(tok, msg)
   println(err_msg)
 }
 
-pub fn Context::get_error_msg(self: Self, tok: Token, msg: String) -> String {
+///|
+pub fn Context::get_error_msg(self : Self, tok : Token, msg : String) -> String {
   let lineno = tok.lineno
   let column = tok.column
   let source_file = self.source_file
   let str_builder = StringBuilder::new()
-
   let color = @color.Red
 
   // 第一行：文件名、行号和列号
@@ -98,7 +102,8 @@ pub fn Context::get_error_msg(self: Self, tok: Token, msg: String) -> String {
   str_builder.to_string()
 }
 
-fn Context::get_code_line(self: Self, lineno: Int) -> String {
+///|
+fn Context::get_code_line(self : Self, lineno : Int) -> String {
   let mut lineno = lineno
   let sb = StringBuilder::new()
   for c in self.code {

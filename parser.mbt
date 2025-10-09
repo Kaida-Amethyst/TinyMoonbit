@@ -968,11 +968,13 @@ pub fn Context::parse_block_expr(
     tokens => {
       let (stmt, rest) = self.parse_stmt(tokens)
       stmts.push(stmt)
-      if rest is [{ kind: SemiColon, .. }, ..tokens] {
+      if rest is [{ kind: SemiColon, .. }, .. tokens] {
         continue tokens
       } else if !(rest is [{ kind: Bracket('}'), .. }, ..]) {
         guard rest is [tok, ..] else {
-          println("Compiler ICE: Failed Parsing BlockExpr, Empty Token ArrayView")
+          println(
+            "Compiler ICE: Failed Parsing BlockExpr, Empty Token ArrayView",
+          )
           panic()
         }
         guard tok.lineno > stmt.end_lineno else {
@@ -1151,6 +1153,7 @@ pub enum AtomExprKind {
   Tuple(Array[Expr])
   Array(Array[Expr])
   //MatchExpr(MatchExpr)
+  StructConstruct(String, Array[(String, Expr)])
 } derive(Show, Eq)
 
 ///|
@@ -1258,8 +1261,9 @@ pub fn Context::parse_atom_expr(
       }
       (expr, tokens[1:])
     }
-    [{ kind: Bracket('('), .. }, ..] => self.parse_paren_or_tuple_expr(tokens)
-    [{ kind: Bracket('['), .. }, ..] => self.parse_array_expr(tokens)
+    [{ kind: Upper(_), ..}, ..] as tokens => self.parse_struct_or_enum_construct(tokens)
+    [{ kind: Bracket('('), .. }, ..] as tokens => self.parse_paren_or_tuple_expr(tokens)
+    [{ kind: Bracket('['), .. }, ..] as tokens => self.parse_array_expr(tokens)
     [] => {
       println("Compiler ICE: Empty Token ArrayView")
       panic()
@@ -1312,6 +1316,60 @@ fn Context::parse_paren_or_tuple_expr(
     kind,
   }
   (atom_expr, tokens)
+}
+
+fn Context::parse_struct_or_enum_construct(
+  self : Self,
+  tokens : ArrayView[Token],
+) -> (AtomExpr, ArrayView[Token]) raise ParseError {
+  guard tokens is [{ kind: Upper(name), lineno, column }, .. tokens] else {
+    println("Compiler ICE: Misuse parse_struct_or_enum_construct")
+    panic()
+  }
+  if tokens is [{kind: DoubleColon, ..}, ..tokens] {
+    guard tokens is [{ kind: Bracket('{'), .. }, ..tokens] else {
+      raise ParseError((tokens[0], "Expect '{' for struct construct") )
+    }
+    let fields : Array[(String, Expr)] = Array::new()
+    let (tokens, end_lineno, end_column) = loop tokens {
+      [{ kind: Bracket('}'), lineno, column }, .. rest] =>
+        break (rest, lineno, column)
+      [{ kind: Comma, .. }, { kind: Bracket('}'), lineno, column }, .. rest] =>
+        break (rest, lineno, column)
+      [{ kind: Comma, .. }, { kind: Lower(field), .. }, .. tokens] => {
+        guard tokens is [{ kind: Colon, .. }, ..tokens] else {
+          raise ParseError((tokens[0], "Expect ':'"))
+        }
+        let (expr, rest) = self.parse_expr(tokens)
+        fields.push((field, expr))
+        continue rest
+      }
+      [{ kind: Lower(field), .. }, .. tokens] => {
+        guard tokens is [{ kind: Colon, .. }, ..] else {
+          raise ParseError((tokens[0], "Expect ':'"))
+        }
+        let (expr, rest) = self.parse_expr(tokens[1:])
+        fields.push((field, expr))
+        continue rest
+      }
+      [] => {
+        println("Compiler ICE: Empty Token ArrayView")
+        panic()
+      }
+      tokens => raise ParseError((tokens[0], "InValid Struct Construct"))
+    }
+    let atom_expr = AtomExpr::{
+      lineno,
+      column,
+      end_lineno,
+      end_column,
+      ty: None,
+      kind: AtomExprKind::StructConstruct(name, fields),
+    }
+    (atom_expr, tokens)
+  } else {
+    ...
+  }
 }
 
 ///|
@@ -2001,6 +2059,7 @@ pub fn Context::parse_pattern(
   }
 }
 
+///|
 pub struct StructDef {
   lineno : Int
   column : Int
@@ -2011,6 +2070,7 @@ pub struct StructDef {
   fields : Array[StructField]
 } derive(Show, Eq)
 
+///|
 pub fn Context::parse_struct_def(
   self : Self,
   tokens : ArrayView[Token],
@@ -2019,26 +2079,29 @@ pub fn Context::parse_struct_def(
     println("Compiler ICE: Misuse parse_struct_def")
     panic()
   }
-  guard tokens is [{ kind: Upper(name), .. }, ..tokens] else {
+  guard tokens is [{ kind: Upper(name), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect struct name"))
   }
   let generic_params : Array[String] = Array::new()
-  let tokens = if tokens is [{ kind: Bracket('['), .. }, ..tokens] {
+  let tokens = if tokens is [{ kind: Bracket('['), .. }, .. tokens] {
     loop tokens {
-      [{kind: Upper(g), ..}, ..tokens] => {
+      [{ kind: Upper(g), .. }, .. tokens] => {
         generic_params.push(g)
         continue tokens
       }
-      [{kind: Comma, ..}, {kind: Upper(g), ..}, ..tokens] => {
+      [{ kind: Comma, .. }, { kind: Upper(g), .. }, .. tokens] => {
         generic_params.push(g)
         continue tokens
       }
-      [{kind: Bracket(']'), ..}, ..tokens] => break tokens
+      [{ kind: Bracket(']'), .. }, .. tokens] => break tokens
       [] => {
         println("Compiler ICE: During Parse Struct Def: Empty Token ArrayView")
         panic()
       }
-      tokens => raise ParseError((tokens[0], "Failed Parsing StructDef: Invalid generic parameters"))
+      tokens =>
+        raise ParseError(
+          (tokens[0], "Failed Parsing StructDef: Invalid generic parameters"),
+        )
     }
   } else {
     tokens
@@ -2057,15 +2120,19 @@ pub fn Context::parse_struct_def(
     tokens => {
       let (field, rest) = self.parse_struct_field(tokens)
       fields.push(field)
-      if rest is [{ kind: SemiColon, .. }, ..tokens] {
+      if rest is [{ kind: SemiColon, .. }, .. tokens] {
         continue tokens
-      } else if !(rest is [{ kind: Bracket('}'), ..}, ..]) {
+      } else if !(rest is [{ kind: Bracket('}'), .. }, ..]) {
         guard rest is [tok, ..] else {
-          println("Compiler ICE: Failed Parsing StructDef: Empty Token ArrayView")
+          println(
+            "Compiler ICE: Failed Parsing StructDef: Empty Token ArrayView",
+          )
           panic()
         }
         guard tok.lineno > field.end_lineno else {
-          raise ParseError((tok, "Expect ',' or '}', or new line after struct field"))
+          raise ParseError(
+            (tok, "Expect ',' or '}', or new line after struct field"),
+          )
         }
         continue rest
       } else {
@@ -2085,6 +2152,7 @@ pub fn Context::parse_struct_def(
   (struct_def, tokens)
 }
 
+///|
 pub struct StructField {
   lineno : Int
   column : Int
@@ -2094,6 +2162,7 @@ pub struct StructField {
   ty : Type
 } derive(Show, Eq)
 
+///|
 pub fn Context::parse_struct_field(
   self : Self,
   tokens : ArrayView[Token],

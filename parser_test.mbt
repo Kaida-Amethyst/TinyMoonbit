@@ -57,14 +57,10 @@ test "Param Parsing" {
   let (param, tok_view) = ctx.parse_param(tok_view)
   assert_true(param is { name: "foo", ty: { kind: String, .. }, .. })
   let (param, tok_view) = ctx.parse_param(tok_view)
-  assert_true(
-    param is { name: "arr", ty: { kind: Array(Double), .. }, .. },
-  )
+  assert_true(param is { name: "arr", ty: { kind: Array(Double), .. }, .. })
   let (param, _) = ctx.parse_param(tok_view)
   assert_true(param.name is "map")
-  assert_true(
-    param.ty.kind is Defined("Map", [String, Int, ..]),
-  )
+  assert_true(param.ty.kind is Defined("Map", [String, Int, ..]))
 }
 
 ///|
@@ -278,6 +274,50 @@ test "Tuple or Paren Expr Parsing" {
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+test "Struct Construct Parsing" {
+  let code = 
+    #|Point::{ x : 1, y: 2, }
+    #|Circle::{ x: 0, y: 1, radius: 5.0 }
+
+  let ctx = Context::new(code)
+  ctx..tokenize()
+  let { tokens, .. } = ctx
+
+  // First struct construct
+  let (e, tok_view) = ctx.parse_atom_expr(tokens[:])
+  assert_true(
+    e.kind is StructConstruct(name, fields) &&
+    name is "Point" &&
+    fields.length() is 2 &&
+    fields[0] is ("x", { kind: ApplyExpr(a1), .. }) &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(1), .. } &&
+    fields[1] is ("y", { kind: ApplyExpr(a2), .. }) &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(2), .. },
+  )
+
+  // Second struct construct
+  let (e, tok_view) = ctx.parse_atom_expr(tok_view)
+  assert_true(
+    e.kind is StructConstruct(name, fields) &&
+    name is "Circle" &&
+    fields.length() is 3 &&
+    fields[0] is ("x", { kind: ApplyExpr(a1), .. }) &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(0), .. } &&
+    fields[1] is ("y", { kind: ApplyExpr(a2), .. }) &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(1), .. } &&
+    fields[2] is ("radius", { kind: ApplyExpr(a3), .. }) &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Double(5.0), .. },
+  )
+
+  // EOF
+  assert_true(tok_view is [{ kind: EOF, .. }])
+}
+
 ///|
 test "Extern Function Parsing" {
   let code =
@@ -463,13 +503,13 @@ test "If Expr Parsing" {
     a.kind is Bool(true) &&
     e.then_block.stmts.length() is 1 &&
     e.then_block.stmts is [then_ret] &&
-    then_ret.kind is ExprStmt({ kind: ApplyExpr(then_a), ..} ) &&
+    then_ret.kind is ExprStmt({ kind: ApplyExpr(then_a), .. }) &&
     then_a.kind is AtomExpr(then_a) &&
     then_a.kind is Int(1) &&
     e.else_block is Some(Right(else_block)) &&
     else_block.stmts.length() is 1 &&
     else_block.stmts is [else_ret] &&
-    else_ret.kind is ExprStmt({ kind: ApplyExpr(else_a), ..}) &&
+    else_ret.kind is ExprStmt({ kind: ApplyExpr(else_a), .. }) &&
     else_a.kind is AtomExpr(else_a) &&
     else_a.kind is Int(0),
   )
@@ -599,6 +639,7 @@ test "For Stmt Parsing" {
   )
 }
 
+///|
 test "Struct Filed Parsing" {
   let code =
     #|field1: Int
@@ -615,6 +656,7 @@ test "Struct Filed Parsing" {
   assert_true(field is { name: "field3", ty: { kind: String, .. }, .. })
 }
 
+///|
 test "Struct Def Parsing" {
   let code =
     #|struct Point {
@@ -634,31 +676,27 @@ test "Struct Def Parsing" {
   assert_true(struct_def.name is "Point")
   assert_true(struct_def.generic_params.length() is 0)
   assert_true(struct_def.fields.length() is 2)
-  assert_true(
-    struct_def.fields[0] is { name: "x", ty: { kind: Int, .. }, .. },
-  )
-  assert_true(
-    struct_def.fields[1] is { name: "y", ty: { kind: Int, .. }, .. },
-  )
+  assert_true(struct_def.fields[0] is { name: "x", ty: { kind: Int, .. }, .. })
+  assert_true(struct_def.fields[1] is { name: "y", ty: { kind: Int, .. }, .. })
   // Second struct
   let (struct_def, tok_view) = ctx.parse_struct_def(tok_view)
   assert_true(struct_def.name is "Tri")
   assert_true(struct_def.generic_params.length() is 3)
-  assert_true(
-    struct_def.generic_params is ["T", "U", "K"],
-  )
+  assert_true(struct_def.generic_params is ["T", "U", "K"])
   assert_true(struct_def.fields.length() is 3)
   assert_true(
-    struct_def.fields[0] is { name: "a", ty: { kind: Defined("T", []), .. }, .. },
+    struct_def.fields[0]
+    is { name: "a", ty: { kind: Defined("T", []), .. }, .. },
   )
   assert_true(
-    struct_def.fields[1] is { name: "b", ty: { kind: Defined("U", []), .. }, .. },
+    struct_def.fields[1]
+    is { name: "b", ty: { kind: Defined("U", []), .. }, .. },
   )
   assert_true(
-    struct_def.fields[2] is { name: "c", ty: { kind: Defined("K", []), .. }, .. },
+    struct_def.fields[2]
+    is { name: "c", ty: { kind: Defined("K", []), .. }, .. },
   )
 
   // EOF
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
-
