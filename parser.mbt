@@ -33,6 +33,7 @@
 ///   | AssignStmt
 ///   | WhileStmt
 ///   | ForStmt
+///   | ReturnStmt
 ///
 /// LetStmt :=
 ///   "let" pattern TypeAnnote? "=" Expr ";"
@@ -59,6 +60,8 @@
 /// for_init := (ident "=" Expr)*
 /// for_cond := Expr
 /// for_step := (ident assign_op Expr)*
+///
+/// ReturnStmt := "return" Expr? ";"
 ///
 /// Expr :=
 ///     ApplyExpr
@@ -100,6 +103,53 @@
 /// match_item :=
 ///   pattern ("if" Expr)? "=>" Expr ";"
 
+
+
+pub struct Program {
+  top_functions : Array[TopFunction]
+  extern_functions : Array[ExternFunction]
+  top_lets : Array[TopLet]
+  // struct_defs : Array[StructDef]
+  // enum_defs : Array[EnumDef]
+}
+
+pub fn Context::parse_program(
+  self: Self,
+) -> Program raise ParseError {
+  let top_functions : Array[TopFunction] = Array::new()
+  let extern_functions : Array[ExternFunction] = Array::new()
+  let top_lets : Array[TopLet] = Array::new()
+  loop self.tokens[:] {
+    [{kind: Keyword(Extern), ..}, ..] as tokens => {
+      let (extern_fn, rest) = self.parse_extern_function(tokens)
+      extern_functions.push(extern_fn)
+      continue rest
+    }
+    [{kind: Keyword(Fn), ..}, ..] as tokens => {
+      let (top_fn, rest) = self.parse_top_function(tokens)
+      top_functions.push(top_fn)
+      continue rest
+    }
+    [{kind: Keyword(Let), ..}, ..] as tokens => {
+      let (top_let, rest) = self.parse_top_let(tokens)
+      top_lets.push(top_let)
+      continue rest
+    }
+    [{kind: EOF, ..}, ..] => break
+    [] => {
+      println("Compiler ICE: Empty Token ArrayView")
+      panic()
+    }
+    tokens => raise ParseError((tokens[0], "Unexpected token in top level"))
+  }
+  let prog = Program::{
+    top_functions,
+    extern_functions,
+    top_lets,
+  }
+  prog
+}
+
 ///|
 pub struct TopFunction {
   lineno : Int
@@ -124,17 +174,23 @@ pub fn Context::parse_top_function(
   guard tokens is [{ kind: Lower(fname), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
-  guard tokens is [{ kind: Bracket('('), .. }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect '('"))
+  let (param_list, ret_type, tokens) = if !(fname is "main") {
+    guard tokens is [{ kind: Bracket('('), .. }, .. tokens] else {
+      raise ParseError((tokens[0], "Expect '('"))
+    }
+    let (param_list, tokens) = self.parse_param_list(tokens)
+    guard tokens is [{ kind: Bracket(')'), .. }, .. tokens] else {
+      raise ParseError((tokens[0], "Expect ')'"))
+    }
+    guard tokens is [{ kind: RightArrow, .. }, .. tokens] else {
+      raise ParseError((tokens[0], "Expect '->'"))
+    }
+    let (ret_type, tokens) = self.parse_type(tokens)
+    (param_list, ret_type, tokens)
+  } else {
+    let ret_type = Type::{ kind: Unit, lineno:-1, column:-1, end_lineno:-1, end_column:-1  }
+    (Array::new(), ret_type, tokens)
   }
-  let (param_list, tokens) = self.parse_param_list(tokens)
-  guard tokens is [{ kind: Bracket(')'), .. }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect ')'"))
-  }
-  guard tokens is [{ kind: RightArrow, .. }, .. tokens] else {
-    raise ParseError((tokens[0], "Expect '->'"))
-  }
-  let (ret_type, tokens) = self.parse_type(tokens)
   let (body, tokens) = self.parse_block_expr(tokens)
   let end_lineno = body.end_lineno
   let end_column = body.end_column
@@ -1339,6 +1395,7 @@ pub enum StmtKind {
   WhileStmt(WhileStmt)
   ForStmt(ForStmt)
   ExprStmt(Expr)
+  ReturnStmt(Expr?)
 } derive(Show, Eq)
 
 ///|
@@ -1366,6 +1423,24 @@ pub fn Context::parse_stmt(
         end_lineno: let_stmt.end_lineno,
         end_column: let_stmt.end_column,
         kind: StmtKind::LetStmt(let_stmt),
+      }
+      (stmt, rest)
+    }
+    [{kind: Keyword(Return), lineno, column}, .. tokens] => {
+      let (expr, rest) = if tokens is [{kind: SemiColon, ..}, ..] {
+        (None, tokens)
+      } else {
+        let (expr, rest) = self.parse_expr(tokens)
+        (Some(expr), rest)
+      }
+      let end_lineno = if expr is Some(e) { e.end_lineno } else { lineno }
+      let end_column = if expr is Some(e) { e.end_column } else { column }
+      let stmt = Stmt::{
+        lineno,
+        column,
+        end_lineno,
+        end_column,
+        kind: StmtKind::ReturnStmt(expr),
       }
       (stmt, rest)
     }

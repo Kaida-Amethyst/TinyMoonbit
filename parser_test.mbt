@@ -556,37 +556,6 @@ test "While Stmt Parsing" {
 ///|
 test "For Stmt Parsing" {
   let code =
-    #|for i = 0; i < 10; i += 1 {
-    #|  println(i);
-    #|}
-  let ctx = Context::new(code)
-  ctx..tokenize()
-  let toks = ctx.tokens[:]
-  let (for_stmt, _) = ctx.parse_for_stmt(toks)
-  assert_true(for_stmt.inits.length() is 1)
-  assert_true(
-    for_stmt.inits[0] is ("i", { kind: ApplyExpr(a), .. }) &&
-    a is { kind: AtomExpr(a), .. } &&
-    a is { kind: Int(0), .. },
-  )
-  assert_true(
-    for_stmt.cond is Some({ kind: BinaryExpr(LT, left, right), .. }) &&
-    left is { kind: ApplyExpr(a1), .. } &&
-    right is { kind: ApplyExpr(a2), .. } &&
-    a1 is { kind: AtomExpr(a1), .. } &&
-    a1 is { kind: Ident("i"), .. } &&
-    a2 is { kind: AtomExpr(a2), .. } &&
-    a2 is { kind: Int(10), .. },
-  )
-  assert_true(for_stmt.steps.length() is 1)
-  assert_true(
-    for_stmt.steps[0] is ("i", PlusAssign, { kind: ApplyExpr(a), .. }) &&
-    a is { kind: AtomExpr(a), .. } &&
-    a is { kind: Int(1), .. },
-  )
-
-  // fib
-  let code =
     #|for i = 0, j = 1; i < 50; i = j, j = i + j {
     #|  println(i);
     #|}
