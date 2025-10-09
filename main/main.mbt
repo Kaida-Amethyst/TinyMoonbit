@@ -135,7 +135,7 @@ fn main {
       return
     }
   }
-  let ctx = @TinyMoonbit.Context::new(code)
+  let ctx = @TinyMoonBit.Context::new(code)
   ctx.tokenize() catch {
     err => {
       println("Lexing error: \{err}")
@@ -144,7 +144,7 @@ fn main {
   }
   let ast = ctx.parse_program() catch {
     err => {
-      println("Parsing error: \{err}")
+      ctx.print_error(err)
       return
     }
   }

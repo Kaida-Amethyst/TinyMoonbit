@@ -1,6 +1,7 @@
 {
   "import": [
     "Kaida-Amethyst/MoonLLVM/IR",
-    "Kaida-Amethyst/either"
+    "Kaida-Amethyst/either",
+    "Kaida-Amethyst/TinyMoonBit/color",
   ]
 }
