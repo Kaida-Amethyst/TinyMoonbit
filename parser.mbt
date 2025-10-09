@@ -930,22 +930,22 @@ pub fn Context::parse_block_expr(
     tokens => {
       let (stmt, rest) = self.parse_stmt(tokens)
       let rest = if !(stmt.kind is ExprStmt(_)) {
-        guard rest is [{ kind: SemiColon, .. }, ..rest] else {
+        guard rest is [{ kind: SemiColon, .. }, .. rest] else {
           raise ParseError((rest[0], "Failed Parsing Block Expr, Expect ';'"))
         }
         stmts.push(stmt)
         rest
+      } else if rest is [{ kind: SemiColon, .. }, .. rest] {
+        stmts.push(stmt)
+        rest
+      } else if rest is [{ kind: Bracket('}'), .. }, ..] {
+        guard stmt.kind is ExprStmt(expr)
+        final_expr = Some(expr)
+        rest
       } else {
-        if rest is [{ kind: SemiColon, .. }, ..rest] {
-          stmts.push(stmt)
-          rest
-        } else if rest is [{kind: Bracket('}'), ..}, ..] {
-          guard stmt.kind is ExprStmt(expr)
-          final_expr = Some(expr)
-          rest
-        } else {
-          raise ParseError((rest[0], "Failed Parsing BlockExpr, Expect ';' or '}'"))
-        }
+        raise ParseError(
+          (rest[0], "Failed Parsing BlockExpr, Expect ';' or '}'"),
+        )
       }
       continue rest
     }
@@ -1643,7 +1643,7 @@ pub fn Context::parse_left_value(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (LeftValue, ArrayView[Token]) raise ParseError {
-  guard tokens is [{ kind: Lower(ident), lineno, column }, ..tokens] else {
+  guard tokens is [{ kind: Lower(ident), lineno, column }, .. tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
   let left_value = LeftValue::{
@@ -1808,14 +1808,17 @@ pub fn Context::parse_for_stmt(
   }
   let inits : Array[(String, Expr)] = Array::new()
   let tokens = loop tokens {
-    [{ kind: Lower(name), .. }, { kind: AssignOp(Assign), .. }, ..tokens] => {
+    [{ kind: Lower(name), .. }, { kind: AssignOp(Assign), .. }, .. tokens] => {
       let (expr, rest) = self.parse_expr(tokens)
       inits.push((name, expr))
       continue rest
     }
-    [{kind: Comma, ..},
-     {kind: Lower(name), ..},
-    {kind: AssignOp(Assign), ..}, ..tokens] => {
+    [
+      { kind: Comma, .. },
+      { kind: Lower(name), .. },
+      { kind: AssignOp(Assign), .. },
+      .. tokens,
+    ] => {
       let (expr, rest) = self.parse_expr(tokens)
       inits.push((name, expr))
       continue rest
@@ -1835,14 +1838,17 @@ pub fn Context::parse_for_stmt(
   }
   let steps : Array[(String, AssignOp, Expr)] = Array::new()
   let tokens = loop tokens {
-    [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, ..tokens]=> {
+    [{ kind: Lower(name), .. }, { kind: AssignOp(op), .. }, .. tokens] => {
       let (expr, rest) = self.parse_expr(tokens)
       steps.push((name, op, expr))
       continue rest
     }
-    [{kind: Comma, ..},
-     {kind: Lower(name), ..},
-     {kind: AssignOp(op), ..}, ..tokens] => {
+    [
+      { kind: Comma, .. },
+      { kind: Lower(name), .. },
+      { kind: AssignOp(op), .. },
+      .. tokens,
+    ] => {
       let (expr, rest) = self.parse_expr(tokens)
       steps.push((name, op, expr))
       continue rest

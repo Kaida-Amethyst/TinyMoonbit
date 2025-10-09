@@ -145,6 +145,7 @@ test "ApplyExpr Parsing" {
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Binary Expr Parsing" {
   let code = "1 + 2 * 3"
   let ctx = Context::new(code)
@@ -162,16 +163,16 @@ test "Binary Expr Parsing" {
     e4.kind is AtomExpr(a3) &&
     a1.kind is Int(1) &&
     a2.kind is Int(2) &&
-    a3.kind is Int(3)
+    a3.kind is Int(3),
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Array Expr Parsing" {
-  let code = 
+  let code =
     #|[1, 2, 3]
     #|[4, 5, 6,]
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -189,7 +190,7 @@ test "Array Expr Parsing" {
     a2 is { kind: Int(2), .. } &&
     elements[2] is { kind: ApplyExpr(a3), .. } &&
     a3 is { kind: AtomExpr(a3), .. } &&
-    a3 is { kind: Int(3), .. }
+    a3 is { kind: Int(3), .. },
   )
 
   // Second array
@@ -205,20 +206,20 @@ test "Array Expr Parsing" {
     a2 is { kind: Int(5), .. } &&
     elements[2] is { kind: ApplyExpr(a3), .. } &&
     a3 is { kind: AtomExpr(a3), .. } &&
-    a3 is { kind: Int(6), .. }
+    a3 is { kind: Int(6), .. },
   )
 
   // EOF
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Tuple or Paren Expr Parsing" {
-  let code = 
+  let code =
     #|(1, 2, 3)
     #|(4, 5, 6,)
     #|(x)
     #|(y,)
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -236,7 +237,7 @@ test "Tuple or Paren Expr Parsing" {
     a2 is { kind: Int(2), .. } &&
     elements[2] is { kind: ApplyExpr(a3), .. } &&
     a3 is { kind: AtomExpr(a3), .. } &&
-    a3 is { kind: Int(3), .. }
+    a3 is { kind: Int(3), .. },
   )
 
   // Second tuple
@@ -252,7 +253,7 @@ test "Tuple or Paren Expr Parsing" {
     a2 is { kind: Int(5), .. } &&
     elements[2] is { kind: ApplyExpr(a3), .. } &&
     a3 is { kind: AtomExpr(a3), .. } &&
-    a3 is { kind: Int(6), .. }
+    a3 is { kind: Int(6), .. },
   )
 
   // Third paren
@@ -261,7 +262,7 @@ test "Tuple or Paren Expr Parsing" {
     e.kind is Paren(a) &&
     a.kind is ApplyExpr(a) &&
     a is { kind: AtomExpr(a), .. } &&
-    a is { kind: Ident("x"), .. }
+    a is { kind: Ident("x"), .. },
   )
 
   // Fourth paren
@@ -270,16 +271,17 @@ test "Tuple or Paren Expr Parsing" {
     e.kind is Paren(a) &&
     a.kind is ApplyExpr(a) &&
     a is { kind: AtomExpr(a), .. } &&
-    a is { kind: Ident("y"), .. }
+    a is { kind: Ident("y"), .. },
   )
 
   // EOF
   assert_true(tok_view is [{ kind: EOF, .. }])
-
 }
 
+///|
 test "Extern Function Parsing" {
-  let code = #|extern fn foo(a: Int, b: Float) -> Bool = "CFoo";
+  let code =
+    #|extern fn foo(a: Int, b: Float) -> Bool = "CFoo";
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -293,6 +295,7 @@ test "Extern Function Parsing" {
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Top Let Parsing" {
   let code = "let x: Int = 42;"
   let ctx = Context::new(code)
@@ -302,19 +305,19 @@ test "Top Let Parsing" {
   assert_true(top_let.name is "x")
   assert_true(top_let.ty is { kind: Int, .. })
   assert_true(
-    top_let.expr is {kind: ApplyExpr(a), ..} &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Int(42), ..}
+    top_let.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(42), .. },
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Let Stmt Parsing" {
-  let code = 
+  let code =
     #|let x : Int = 33
     #|let y = true
     #|let tup : (Int, Double) = (1, 2.0)
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
@@ -322,31 +325,32 @@ test "Let Stmt Parsing" {
   // First let
   let (stmt, tok_view) = ctx.parse_let_stmt(tokens[:])
   assert_true(stmt.pattern is { kind: Ident("x"), .. })
-  assert_true(stmt.ty is Some({ kind: Int, .. }) )
+  assert_true(stmt.ty is Some({ kind: Int, .. }))
   assert_true(
-    stmt.expr is {kind: ApplyExpr(a), ..} &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Int(33), ..}
+    stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(33), .. },
   )
   // Second let
   let (stmt, tok_view) = ctx.parse_let_stmt(tok_view)
   assert_true(stmt.pattern is { kind: Ident("y"), .. })
   assert_true(stmt.ty is None)
   assert_true(
-    stmt.expr is {kind: ApplyExpr(a), ..} &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Bool(true), ..}
+    stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Bool(true), .. },
   )
 
   // Third let
   let (stmt, tok_view) = ctx.parse_let_stmt(tok_view)
   assert_true(stmt.pattern is { kind: Ident("tup"), .. })
-  assert_true(stmt.ty is Some({ kind: Tuple(_), .. }) )
+  assert_true(stmt.ty is Some({ kind: Tuple(_), .. }))
 
   // EOF
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "let mut Stmt Parsing" {
   let code = "let mut counter: Int = 0"
   let ctx = Context::new(code)
@@ -354,65 +358,68 @@ test "let mut Stmt Parsing" {
   let { tokens, .. } = ctx
   let (stmt, tok_view) = ctx.parse_let_mut_stmt(tokens[:])
   assert_true(stmt.name is "counter")
-  assert_true(stmt.ty is Some({ kind: Int, .. }) )
+  assert_true(stmt.ty is Some({ kind: Int, .. }))
   assert_true(
-    stmt.expr is {kind: ApplyExpr(a), ..} &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Int(0), ..}
+    stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(0), .. },
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "assign Stmt Parsing" {
-  let code = 
+  let code =
     #|a[0].field += 1
     #|y -= 2
     #|foo *= 3
   let ctx = Context::new(code)
-  ctx .. tokenize()
+  ctx..tokenize()
   let toks = ctx.tokens[:]
 
   // First assign
   let (assign_stmt, tok_view) = ctx.parse_assign_stmt(toks)
   assert_true(assign_stmt.op is PlusAssign)
   assert_true(
-    assign_stmt.left_value is { kind: FieldAccess(lv, "field"), ..} &&
-    lv is { kind: ArrayAccess(lv2, idx), ..} &&
-    lv2 is { kind: Ident("a"), ..} &&
-    idx is { kind: ApplyExpr(a), ..} &&
-    a is { kind: AtomExpr(a), ..} &&
-    a is { kind: Int(0), ..}
+    assign_stmt.left_value is { kind: FieldAccess(lv, "field"), .. } &&
+    lv is { kind: ArrayAccess(lv2, idx), .. } &&
+    lv2 is { kind: Ident("a"), .. } &&
+    idx is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(0), .. },
   )
-  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
-    a is { kind: AtomExpr(a), ..} &&
-    a is { kind: Int(1), ..}
+  assert_true(
+    assign_stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(1), .. },
   )
 
   // Second assign
   let (assign_stmt, tok_view) = ctx.parse_assign_stmt(tok_view)
   assert_true(assign_stmt.op is MinusAssign)
+  assert_true(assign_stmt.left_value is { kind: Ident("y"), .. })
   assert_true(
-    assign_stmt.left_value is { kind: Ident("y"), ..}
-  )
-  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
-    a is { kind: AtomExpr(a), ..} &&
-    a is { kind: Int(2), ..}
+    assign_stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(2), .. },
   )
   // Third assign
   let (assign_stmt, tok_view) = ctx.parse_assign_stmt(tok_view)
   assert_true(assign_stmt.op is MultAssign)
-  assert_true(assign_stmt.left_value is { kind: Ident("foo"), ..})
-  assert_true(assign_stmt.expr is { kind: ApplyExpr(a), ..} &&
-    a is { kind: AtomExpr(a), ..} &&
-    a is { kind: Int(3), ..}
+  assert_true(assign_stmt.left_value is { kind: Ident("foo"), .. })
+  assert_true(
+    assign_stmt.expr is { kind: ApplyExpr(a), .. } &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(3), .. },
   )
 
   // EOF
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "Block Expr Parsing" {
-  let code = 
+  let code =
     #|{
     #|  let x: Int = 10;
     #|  let y = 20;
@@ -433,13 +440,14 @@ test "Block Expr Parsing" {
     a1.kind is Ident("x") &&
     right.kind is ApplyExpr(a2) &&
     a2.kind is AtomExpr(a2) &&
-    a2.kind is Ident("y")
+    a2.kind is Ident("y"),
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "If Expr Parsing" {
-  let code = 
+  let code =
     #|if true {
     #|  1
     #|} else {
@@ -463,12 +471,12 @@ test "If Expr Parsing" {
     else_block.final_expr is Some(else_ret) &&
     else_ret.kind is ApplyExpr(else_a) &&
     else_a.kind is AtomExpr(else_a) &&
-    else_a.kind is Int(0)
+    else_a.kind is Int(0),
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 
   // else if
-  let code = 
+  let code =
     #|if a > b {
     #|  a
     #|} else if a == b {
@@ -476,12 +484,10 @@ test "If Expr Parsing" {
     #|} else {
     #|  b
     #|}
-
   let ctx = Context::new(code)
   ctx..tokenize()
   let { tokens, .. } = ctx
   let (e, _) = ctx.parse_if_expr(tokens[:])
-
   assert_true(
     e.cond.kind is BinaryExpr(GT, left, right) &&
     left.kind is ApplyExpr(a1) &&
@@ -496,7 +502,6 @@ test "If Expr Parsing" {
     then_a.kind is AtomExpr(then_a) &&
     then_a.kind is Ident("a") &&
     e.else_block is Some(Left(else_if)) &&
-
     else_if.cond.kind is BinaryExpr(Eq, left2, right2) &&
     left2.kind is ApplyExpr(a3) &&
     a3.kind is AtomExpr(a3) &&
@@ -504,24 +509,23 @@ test "If Expr Parsing" {
     right2.kind is ApplyExpr(a4) &&
     a4.kind is AtomExpr(a4) &&
     a4.kind is Ident("b") &&
-
     else_if.then_block.stmts.length() is 0 &&
     else_if.then_block.final_expr is Some(else_if_ret) &&
     else_if_ret.kind is ApplyExpr(else_if_a) &&
     else_if_a.kind is AtomExpr(else_if_a) &&
     else_if_a.kind is Int(0) &&
-
     else_if.else_block is Some(Right(else_block)) &&
     else_block.stmts.length() is 0 &&
     else_block.final_expr is Some(else_ret) &&
     else_ret.kind is ApplyExpr(else_a) &&
     else_a.kind is AtomExpr(else_a) &&
-    else_a.kind is Ident("b")
+    else_a.kind is Ident("b"),
   )
 }
 
+///|
 test "While Stmt Parsing" {
-  let code = 
+  let code =
     #|while i < 10 {
     #|  i += 1;
     #|}
@@ -544,84 +548,82 @@ test "While Stmt Parsing" {
     assign.left_value.kind is Ident("i") &&
     assign.expr.kind is ApplyExpr(a3) &&
     a3.kind is AtomExpr(a3) &&
-    a3.kind is Int(1)
+    a3.kind is Int(1),
   )
   assert_true(tok_view is [{ kind: EOF, .. }])
 }
 
+///|
 test "For Stmt Parsing" {
   let code =
     #|for i = 0; i < 10; i += 1 {
     #|  println(i);
     #|}
-
   let ctx = Context::new(code)
-  ctx .. tokenize()
+  ctx..tokenize()
   let toks = ctx.tokens[:]
-
   let (for_stmt, _) = ctx.parse_for_stmt(toks)
   assert_true(for_stmt.inits.length() is 1)
   assert_true(
-    for_stmt.inits[0] is ("i", {kind: ApplyExpr(a), ..}) &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Int(0), ..}
+    for_stmt.inits[0] is ("i", { kind: ApplyExpr(a), .. }) &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(0), .. },
   )
   assert_true(
-    for_stmt.cond is Some({kind: BinaryExpr(LT, left, right), ..}) &&
-    left is {kind: ApplyExpr(a1), ..} &&
-    right is {kind: ApplyExpr(a2), ..} &&
-    a1 is {kind: AtomExpr(a1), ..} &&
-    a1 is {kind: Ident("i"), ..} &&
-    a2 is {kind: AtomExpr(a2), ..} &&
-    a2 is {kind: Int(10), ..}
+    for_stmt.cond is Some({ kind: BinaryExpr(LT, left, right), .. }) &&
+    left is { kind: ApplyExpr(a1), .. } &&
+    right is { kind: ApplyExpr(a2), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Ident("i"), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(10), .. },
   )
   assert_true(for_stmt.steps.length() is 1)
   assert_true(
-    for_stmt.steps[0] is ("i", PlusAssign, {kind: ApplyExpr(a), ..}) &&
-    a is {kind: AtomExpr(a), ..} &&
-    a is {kind: Int(1), ..}
+    for_stmt.steps[0] is ("i", PlusAssign, { kind: ApplyExpr(a), .. }) &&
+    a is { kind: AtomExpr(a), .. } &&
+    a is { kind: Int(1), .. },
   )
 
   // fib
-  let code = 
+  let code =
     #|for i = 0, j = 1; i < 50; i = j, j = i + j {
     #|  println(i);
     #|}
-
   let ctx = Context::new(code)
-  ctx .. tokenize()
+  ctx..tokenize()
   let toks = ctx.tokens[:]
-
   let (for_stmt, _) = ctx.parse_for_stmt(toks)
   assert_true(for_stmt.inits.length() is 2)
   assert_true(
-    for_stmt.inits[0] is ("i", {kind: ApplyExpr(a1), ..}) &&
-    a1 is {kind: AtomExpr(a1), ..} &&
-    a1 is {kind: Int(0), ..} &&
-    for_stmt.inits[1] is ("j", {kind: ApplyExpr(a2), ..}) &&
-    a2 is {kind: AtomExpr(a2), ..} &&
-    a2 is {kind: Int(1), ..}
+    for_stmt.inits[0] is ("i", { kind: ApplyExpr(a1), .. }) &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Int(0), .. } &&
+    for_stmt.inits[1] is ("j", { kind: ApplyExpr(a2), .. }) &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(1), .. },
   )
   assert_true(
-    for_stmt.cond is Some({kind: BinaryExpr(LT, left, right), ..}) &&
-    left is {kind: ApplyExpr(a1), ..} &&
-    right is {kind: ApplyExpr(a2), ..} &&
-    a1 is {kind: AtomExpr(a1), ..} &&
-    a1 is {kind: Ident("i"), ..} &&
-    a2 is {kind: AtomExpr(a2), ..} &&
-    a2 is {kind: Int(50), ..}
+    for_stmt.cond is Some({ kind: BinaryExpr(LT, left, right), .. }) &&
+    left is { kind: ApplyExpr(a1), .. } &&
+    right is { kind: ApplyExpr(a2), .. } &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Ident("i"), .. } &&
+    a2 is { kind: AtomExpr(a2), .. } &&
+    a2 is { kind: Int(50), .. },
   )
   assert_true(for_stmt.steps.length() is 2)
   assert_true(
-    for_stmt.steps[0] is ("i", Assign, {kind: ApplyExpr(a1), ..}) &&
-    a1 is {kind: AtomExpr(a1), ..} &&
-    a1 is {kind: Ident("j"), ..} &&
-    for_stmt.steps[1] is ("j", Assign, {kind: BinaryExpr(Add, left, right), ..}) &&
-    left is {kind: ApplyExpr(a3), ..} &&
-    a3 is {kind: AtomExpr(a3), ..} &&
-    a3 is {kind: Ident("i"), ..} &&
-    right is {kind: ApplyExpr(a4), ..} &&
-    a4 is {kind: AtomExpr(a4), ..} &&
-    a4 is {kind: Ident("j"), ..}
+    for_stmt.steps[0] is ("i", Assign, { kind: ApplyExpr(a1), .. }) &&
+    a1 is { kind: AtomExpr(a1), .. } &&
+    a1 is { kind: Ident("j"), .. } &&
+    for_stmt.steps[1]
+    is ("j", Assign, { kind: BinaryExpr(Add, left, right), .. }) &&
+    left is { kind: ApplyExpr(a3), .. } &&
+    a3 is { kind: AtomExpr(a3), .. } &&
+    a3 is { kind: Ident("i"), .. } &&
+    right is { kind: ApplyExpr(a4), .. } &&
+    a4 is { kind: AtomExpr(a4), .. } &&
+    a4 is { kind: Ident("j"), .. },
   )
 }

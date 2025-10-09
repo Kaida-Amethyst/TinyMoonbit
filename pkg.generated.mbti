@@ -119,7 +119,7 @@ pub struct BlockExpr {
   end_column : Int
   ty : TypeKind?
   stmts : Array[Stmt]
-  expr : Expr?
+  final_expr : Expr?
 }
 impl Eq for BlockExpr
 impl Show for BlockExpr
@@ -424,7 +424,7 @@ pub struct TopLet {
   end_lineno : Int
   end_column : Int
   name : String
-  ty : Type?
+  ty : Type
   expr : Expr
 }
 
