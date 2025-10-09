@@ -253,7 +253,7 @@ pub enum TypeKind {
   Array(Type)
   Function(Array[Type], Type)
   Defined(String, Array[Type]) // Array[Int], Map[String, Int]
-} derive(Show, Eq)
+} derive(Show)
 
 ///|
 pub fn Context::parse_type(
@@ -368,6 +368,42 @@ pub fn Context::parse_type(
       panic()
     }
     tok => raise ParseError((tok[0], "InValid Type Parsing"))
+  }
+}
+
+pub impl Eq for TypeKind with equal(self, other) {
+  match (self, other) {
+    (Unit, Unit) => true
+    (Bool, Bool) => true
+    (Int, Int) => true
+    (Int64, Int64) => true
+    (UInt, UInt) => true
+    (UInt64, UInt64) => true
+    (Float, Float) => true
+    (Double, Double) => true
+    (String, String) => true
+    (Tuple(tys1), Tuple(tys2)) => {
+      tys1.length() == tys2.length() &&
+      tys1.zip(tys2)
+          .iter()
+          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind))
+    }
+    (Array(ty1), Array(ty2)) => ty1.kind.equal(ty2.kind)
+    (Function(param_tys1, ret_ty1), Function(param_tys2, ret_ty2)) => {
+      param_tys1.length() == param_tys2.length() &&
+      param_tys1.zip(param_tys2)
+          .iter()
+          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind)) &&
+      ret_ty1.kind.equal(ret_ty2.kind)
+    }
+    (Defined(name1, sub_tys1), Defined(name2, sub_tys2)) => {
+      name1 == name2 &&
+      sub_tys1.length() == sub_tys2.length() &&
+      sub_tys1.zip(sub_tys2)
+          .iter()
+          .all(tpair => tpair is (t1, t2) && t1.kind.equal(t2.kind))
+    }
+    _ => false
   }
 }
 
@@ -762,7 +798,7 @@ pub struct Expr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : ExprKind
 } derive(Show, Eq)
 
@@ -1040,7 +1076,7 @@ pub struct ApplyExpr {
   column : Int
   end_lineno : Int
   end_column : Int
-  ty : TypeKind?
+  mut ty : TypeKind?
   kind : ApplyExprKind
 } derive(Show, Eq)
 
@@ -1054,13 +1090,11 @@ pub enum ApplyExprKind {
 } derive(Show, Eq)
 
 ///|
-#callsite(autofill(loc))
 pub fn Context::parse_apply_expr(
   self : Context,
   tokens : ArrayView[Token],
-  loc~: SourceLoc
 ) -> (ApplyExpr, ArrayView[Token]) raise ParseError {
-  let (atom_expr, tokens) = self.parse_atom_expr(tokens, loc~)
+  let (atom_expr, tokens) = self.parse_atom_expr(tokens)
   let apply_expr = ApplyExpr::{
     lineno: atom_expr.lineno,
     column: atom_expr.column,
@@ -1176,11 +1210,9 @@ pub enum AtomExprKind {
 } derive(Show, Eq)
 
 ///|
-#callsite(autofill(loc))
 pub fn Context::parse_atom_expr(
   self : Self,
   tokens : ArrayView[Token],
-  loc~: SourceLoc
 ) -> (AtomExpr, ArrayView[Token]) raise ParseError {
   match tokens {
     [{ kind: Int(v), lineno, column }, ..] => {
@@ -1288,7 +1320,7 @@ pub fn Context::parse_atom_expr(
       println("Compiler ICE: Empty Token ArrayView")
       panic()
     }
-    _ => raise ParseError((tokens[0], "InValid Atom Expression, loc: \{loc}"))
+    _ => raise ParseError((tokens[0], "InValid Atom Expression"))
   }
 }
 
@@ -1540,7 +1572,7 @@ pub struct LetStmt {
   end_lineno : Int
   end_column : Int
   pattern : Pattern
-  ty : Type?
+  mut ty : Type?
   expr : Expr
 } derive(Show, Eq)
 
@@ -1602,7 +1634,7 @@ pub struct LetMutStmt {
   end_lineno : Int
   end_column : Int
   name : String
-  ty : Type?
+  mut ty : Type?
   expr : Expr
 } derive(Show, Eq)
 

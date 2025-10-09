@@ -5,9 +5,11 @@ pub suberror ParseError (Token, String) derive(Show)
 pub struct Context {
   code : String
   tokens : Array[Token]
-  type_env: Env[String, TypeKind]
   fatal_errors : Array[ParseError] // stop type check
   normal_errors : Array[ParseError] // stop codegen
+
+  mut type_env: Env[String, TypeKind]
+  mut current_func: TopFunction?
 
   //
   source_file : String
@@ -18,11 +20,28 @@ pub fn Context::new(code : String, source_file~: String = "demo") -> Context {
   Context::{
     code,
     tokens: Array::new(),
-    type_env: Env::new(),
     fatal_errors: Array::new(),
     normal_errors: Array::new(),
+    type_env: Env::new(),
+    current_func: None,
     source_file,
   }
+}
+
+pub fn Context::push_env(self: Self) -> Unit {
+  self.type_env = self.type_env.sub_env()
+}
+
+pub fn Context::pop_env(self: Self) -> Unit {
+  self.type_env = self.type_env.parent.unwrap()
+}
+
+pub fn Context::set_env(self: Self, k: String, v: TypeKind) -> Unit {
+  self.type_env.set(k, v)
+}
+
+pub fn Context::get_ident_type(self: Self, k: String) -> TypeKind? {
+  self.type_env.get(k)
 }
 
 pub fn Context::print_error(self: Self, err: ParseError) -> Unit {

@@ -53,6 +53,13 @@ fn BinaryOp::precedence(self : Self) -> Int {
   }
 }
 
+fn BinaryOp::is_cmp(self : Self) -> Bool {
+  match self {
+    Eq | NE | LT | GT | LE | GE => true
+    _ => false
+  }
+}
+
 ///|
 pub(all) enum AssignOp {
   Assign // =
