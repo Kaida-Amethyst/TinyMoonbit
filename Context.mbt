@@ -5,9 +5,11 @@ pub suberror ParseError (Token, String) derive(Show)
 pub struct Context {
   code : String
   tokens : Array[Token]
+  type_env: Env[String, TypeKind]
   fatal_errors : Array[ParseError] // stop type check
   normal_errors : Array[ParseError] // stop codegen
 
+  //
   source_file : String
 }
 
@@ -16,6 +18,7 @@ pub fn Context::new(code : String, source_file~: String = "demo") -> Context {
   Context::{
     code,
     tokens: Array::new(),
+    type_env: Env::new(),
     fatal_errors: Array::new(),
     normal_errors: Array::new(),
     source_file,

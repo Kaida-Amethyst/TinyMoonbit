@@ -112,6 +112,10 @@ pub struct Program {
 
 ///|
 pub fn Context::parse_program(self : Self) -> Program raise ParseError {
+  guard self.tokens.length() > 0 else {
+    println("Compiler ICE: Should tokenize before parsing")
+    panic()
+  }
   let top_functions : Array[TopFunction] = Array::new()
   let extern_functions : Array[ExternFunction] = Array::new()
   let top_lets : Array[TopLet] = Array::new()
@@ -150,7 +154,7 @@ pub struct TopFunction {
   end_column : Int
   fname : String
   param_list : Array[Param]
-  ret_type : Type
+  ret_ty : Type
   body : BlockExpr
 } derive(Show, Eq)
 
@@ -166,7 +170,7 @@ pub fn Context::parse_top_function(
   guard tokens is [{ kind: Lower(fname), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
-  let (param_list, ret_type, tokens) = if !(fname is "main") {
+  let (param_list, ret_ty, tokens) = if !(fname is "main") {
     guard tokens is [{ kind: Bracket('('), .. }, .. tokens] else {
       raise ParseError((tokens[0], "Expect '('"))
     }
@@ -177,8 +181,8 @@ pub fn Context::parse_top_function(
     guard tokens is [{ kind: RightArrow, .. }, .. tokens] else {
       raise ParseError((tokens[0], "Expect '->'"))
     }
-    let (ret_type, tokens) = self.parse_type(tokens)
-    (param_list, ret_type, tokens)
+    let (ret_ty, tokens) = self.parse_type(tokens)
+    (param_list, ret_ty, tokens)
   } else {
     let ret_type = Type::{
       kind: Unit,
@@ -199,7 +203,7 @@ pub fn Context::parse_top_function(
     end_column,
     fname,
     param_list,
-    ret_type,
+    ret_ty,
     body,
   }
   (top_function, tokens)
