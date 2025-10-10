@@ -2,6 +2,7 @@
   "is-main": true,
   "import": [
     "Kaida-Amethyst/TinyMoonBit",
+    "Kaida-Amethyst/MoonLLVM/IR",
     "moonbitlang/x/fs"
   ]
 }

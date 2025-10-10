@@ -2,7 +2,7 @@
 pub(all) struct Name {
   id : String
   slot : Int
-}
+} derive(Hash)
 
 ///|
 pub fn Context::new_name(self : Self, n : String) -> Name {

@@ -108,6 +108,16 @@ fn main {
     #|  -stop-after=parse     Stop after parsing
     #|  -stop-after=knf       Stop after Knf transformation
   let args = @env.args()
+  let legal_args = [
+    "-h", "--help", "-f", "--file", "-stop-after=parse", "-stop-after=knf"
+  ]
+  for arg in args[1:] {
+    if arg.has_prefix("-") && !legal_args.contains(arg) {
+      println("Unknown argument: \{arg}")
+      println(help_info)
+      return
+    }
+  }
   if args.contains("-h") || args.contains("--help") {
     println(help_info)
     return
@@ -169,8 +179,14 @@ fn main {
 
   if args.contains("-stop-after=knf") {
     ctx.print_knf()
+    return
   }
 
-  // dummy
-  ctx.print_knf()
+  let mod = ctx.llvm_codegen() catch {
+    err => {
+      println("Code generation error: \{err}")
+      return
+    }
+  }
+  mod.dump()
 }

@@ -25,6 +25,9 @@ pub struct Context {
   // knf_struct_defs: Map[String, KnfStructDef]
   // knf_enum_defs: Map[String, KnfEnumDef]
 
+  // codegen phase
+  llvm_funcs: Map[String, @IR.Function]
+
   //
   source_file : String
 }
@@ -46,6 +49,7 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     knf_top_lets: Map::new(),
     knf_ext_funcs: Map::new(),
     knf_top_funcs: Map::new(),
+    llvm_funcs: Map::new(),
     source_file,
   }
 }
