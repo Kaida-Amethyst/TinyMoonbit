@@ -4,6 +4,14 @@ pub(all) struct Name {
   slot : Int
 } derive(Hash, Eq)
 
+pub fn Name::new_wild_card() -> Name {
+  Name::{ id: "_", slot: 0 }
+}
+
+pub fn Name::is_wild_card(self : Name) -> Bool {
+  self.id == "_"
+}
+
 ///|
 pub fn Context::new_name(self : Self, n : String) -> Name {
   match self.name_env.get(n) {
@@ -339,9 +347,11 @@ pub fn Context::let_stmt_to_knf(
   }
   let (stmts, expr) = self.expr_to_knf(expr)
   match (pattern.kind, ty.kind, expr) {
-    (Wildcard, _, expr) =>
-      // let _ = expr;
-      [..stmts, KnfStmt::ExprStmt(expr)]
+    // let _ = expr;
+    (Wildcard, ty, expr) => {
+      let wild_card = Name::new_wild_card()
+      [..stmts, KnfStmt::Let(wild_card, ty, expr)]
+    }
     (Ident(name), ty, expr) => {
       let name = self.new_name(name)
       [..stmts, KnfStmt::Let(name, ty, expr)]

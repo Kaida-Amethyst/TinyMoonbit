@@ -35,7 +35,12 @@ pub fn Context::codegen_knf_func_for_func_value(self: Self, top_fn: KnfFunction)
     let (_, p) = p;
     codegen_for_type(p, llvm_ctx)}
   )
-  let retTy = codegen_for_type(top_fn.ty, llvm_ctx)
+  //let retTy = codegen_for_type(top_fn.ty, llvm_ctx)
+  let retTy = if top_fn.name is "main" {
+    (llvm_ctx.getInt32Ty() : &@IR.Type)
+  } else {
+    codegen_for_type(top_fn.ty, llvm_ctx)
+  }
   let fty = llvm_ctx.getFunctionType(retTy, argTys)
   let fval = llvm_mod.addFunction(fty, top_fn.name.to_string())
   self.llvm_funcs.set(top_fn.name.to_string(), fval)
@@ -63,6 +68,9 @@ pub fn Context::codegen_knf_func(self: Self, top_fn: KnfFunction) -> Unit raise 
       let _ = builder.createRet(ret_val)
     }
   }
+  if top_fn.name is "main" {
+    let _ = builder.createRet(self.llvm_ctx.getConstInt32(0))
+  }
 }
 
 pub fn Context::codegen_knf_stmt(
@@ -74,8 +82,10 @@ pub fn Context::codegen_knf_stmt(
   match stmt {
     Let(name, ty, expr) => {
       let expr_val = self.codegen_knf_expr(expr, name_value_map, name_type_map)
-      name_value_map.set(name, expr_val)
-      name_type_map.set(name, ty)
+      if !name.is_wild_card() {
+        name_value_map.set(name, expr_val)
+        name_type_map.set(name, ty)
+      }
     }
     LetMut(name, ty, expr) => {
       let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
