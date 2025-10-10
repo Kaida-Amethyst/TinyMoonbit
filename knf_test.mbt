@@ -200,8 +200,10 @@ test "Assign Knf Convert" {
 ///|
 test "If Expr Knf Convert" {
   let code =
-    #|fn max(a: Int, b: Int) -> Int {
-    #|  let res = if a > b {
+    #|extern fn f(a: Int) -> Int = "Foo" ;
+    #|
+    #|fn fmax(a: Int, b: Int) -> Int {
+    #|  let res = if f(a) > f(b) {
     #|    a
     #|  } else {
     #|    b
@@ -210,16 +212,18 @@ test "If Expr Knf Convert" {
     #|}
   let ctx = Context::new(code)
   ctx..tokenize()..parse()..typecheck()
-  let f = ctx.top_functions.get("max").unwrap()
+  let _ = ctx.new_name("f") // extern function
+  let f = ctx.top_functions.get("fmax").unwrap()
   let knf_func = ctx.top_function_to_knf(f)
   let expected =
-    #|fn max(a: Int, b: Int) -> Int {
-    #|  let tmp: Bool = a > b;
-    #|  let res = if tmp {
+    #|fn fmax(a: Int, b: Int) -> Int {
+    #|  let tmp: Int = f(a);
+    #|  let tmp$1: Int = f(b);
+    #|  let res: Int = if tmp > tmp$1 {
     #|    a
     #|  } else {
     #|    b
-    #|  }
+    #|  };
     #|  res
     #|}
   inspect(knf_func, content=expected)

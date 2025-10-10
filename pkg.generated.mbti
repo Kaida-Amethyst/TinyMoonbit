@@ -145,7 +145,7 @@ fn Context::apply_expr_to_knf(Self, ApplyExpr) -> (Array[KnfStmt], KnfExpr)
 fn Context::array_access_to_knf(Self, ApplyExpr, Expr) -> (Array[KnfStmt], KnfExpr)
 fn Context::assign_stmt_to_knf(Self, AssignStmt) -> Array[KnfStmt]
 fn Context::atom_expr_to_knf(Self, AtomExpr) -> (Array[KnfStmt], KnfExpr)
-fn Context::binary_expr_to_knf(Self, BinaryOp, Expr, Expr, TypeKind) -> (Array[KnfStmt], KnfExpr)
+fn Context::binary_expr_to_knf(Self, BinaryOp, Expr, Expr) -> (Array[KnfStmt], KnfExpr)
 fn Context::bind_pat_and_expr_to_knf(Self, Pattern, TypeKind, KnfExpr) -> Array[KnfStmt]
 fn Context::bind_pat_and_name_to_knf(Self, Pattern, TypeKind, Name) -> Array[KnfStmt]
 fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
@@ -361,7 +361,7 @@ pub(all) enum KnfStmt {
   Return(KnfExpr)
   ReturnVoid
 }
-fn KnfStmt::stringify(Self, ident~ : Int) -> String
+fn KnfStmt::stringify(Self, ident? : Int) -> String
 impl Show for KnfStmt
 
 pub(all) struct KnfStructDef {

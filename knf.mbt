@@ -619,28 +619,22 @@ pub fn Context::for_stmt_to_knf(
 }
 
 ///|
-pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
+pub fn KnfStmt::stringify(self : KnfStmt, ident? : Int = 0) -> String {
   let sb = StringBuilder::new()
   match self {
     KnfStmt::Let(name, ty, expr) =>
-      sb.write_string("let \{name}: \{ty} = \{expr.stringify()};")
+      sb.write_string("let \{name}: \{ty} = \{expr.stringify(ident~)};")
     KnfStmt::LetMut(name, ty, expr) =>
-      sb.write_string("let mut \{name}: \{ty} = \{expr.stringify()};")
+      sb.write_string("let mut \{name}: \{ty} = \{expr.stringify(ident~)};")
     KnfStmt::Assign(name, expr) => sb.write_string("\{name.id} = \{expr};")
     KnfStmt::ArrayPut(array_name, index_name, expr) =>
       sb.write_string(
-        "\{array_name.id}[\{index_name.id}] = \{expr.stringify()};",
+        "\{array_name.id}[\{index_name.id}] = \{expr.stringify(ident~)};",
       )
     KnfStmt::StructSet(struct_name, field_name, expr) =>
-      sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
-    //KnfStmt::If(cond, then_block, else_block) => {
-    //  sb.write_string("if \{cond.stringify()} ")
-    //  sb.write_string(then_block.stringify(ident=ident + 2))
-    //  if else_block.stmts.length() > 0 {
-    //    sb.write_string(" else ")
-    //    sb.write_string(else_block.stringify(ident=ident + 2))
-    //  }
-    //}
+      sb.write_string(
+        "\{struct_name.id}.\{field_name} = \{expr.stringify(ident~)};",
+      )
     KnfStmt::While(cond, body) => {
       if cond.stmts.length() < 2 {
         sb.write_string("while \{cond.nesed_stringify()} do ")
@@ -650,8 +644,9 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
       }
       sb.write_string(body.stringify(ident=ident + 2))
     }
-    KnfStmt::ExprStmt(expr) => sb.write_string("\{expr.stringify()};")
-    KnfStmt::Return(expr) => sb.write_string("return \{expr.stringify()};")
+    KnfStmt::ExprStmt(expr) => sb.write_string("\{expr.stringify(ident~)};")
+    KnfStmt::Return(expr) =>
+      sb.write_string("return \{expr.stringify(ident~)};")
     KnfStmt::ReturnVoid => sb.write_string("return;")
   }
   sb.to_string()
@@ -697,15 +692,7 @@ pub fn Context::expr_to_knf(
       let { stmts, final_expr } = self.block_to_knf(block_expr)
       (stmts, final_expr)
     }
-    BinaryExpr(op, lhs, rhs) => {
-      guard expr.ty is Some(ty) else {
-        println(
-          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
-        )
-        panic()
-      }
-      self.binary_expr_to_knf(op, lhs, rhs, ty)
-    }
+    BinaryExpr(op, lhs, rhs) => self.binary_expr_to_knf(op, lhs, rhs)
     IfExpr(if_expr) => self.if_expr_to_knf(if_expr)
   }
 }
@@ -716,17 +703,22 @@ pub fn Context::binary_expr_to_knf(
   op : BinaryOp,
   lhs : Expr,
   rhs : Expr,
-  ty : TypeKind,
 ) -> (Array[KnfStmt], KnfExpr) {
   let (lhs_stmts, lhs_knf_expr) = self.expr_to_knf(lhs)
   let (rhs_stmts, rhs_knf_expr) = self.expr_to_knf(rhs)
+  guard lhs.ty is Some(lhs_ty) && rhs.ty is Some(rhs_ty) else {
+    println(
+      "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
   let stmts = Array::new()
   stmts..append(lhs_stmts)..append(rhs_stmts)
   let lhs_name = match lhs_knf_expr {
     Ident(name) => name
     _ => {
       let name = self.new_name("tmp")
-      stmts.push(KnfStmt::Let(name, ty, lhs_knf_expr))
+      stmts.push(KnfStmt::Let(name, lhs_ty, lhs_knf_expr))
       name
     }
   }
@@ -734,7 +726,7 @@ pub fn Context::binary_expr_to_knf(
     Ident(name) => name
     _ => {
       let name = self.new_name("tmp")
-      stmts.push(KnfStmt::Let(name, ty, rhs_knf_expr))
+      stmts.push(KnfStmt::Let(name, rhs_ty, rhs_knf_expr))
       name
     }
   }
@@ -1000,16 +992,55 @@ pub fn Context::multiple_exprs_to_knf(
 }
 
 ///|
+///
+/// ```mbt
+/// let code =
+///   #|fn max(a: Int, b: Int) -> Int {
+///   #|  let res = if a > b {
+///   #|    a
+///   #|  } else {
+///   #|    b
+///   #|  }
+///   #|  res
+///   #|}
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+/// let f = ctx.top_functions.get("max").unwrap()
+/// let knf_func = ctx.top_function_to_knf(f)
+/// let expected =
+///   #|fn max(a: Int, b: Int) -> Int {
+///   #|  let res: Int = if a > b {
+///   #|    a
+///   #|  } else {
+///   #|    b
+///   #|  };
+///   #|  res
+///   #|}
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::if_expr_to_knf(
   self : Self,
   if_expr : IfExpr,
 ) -> (Array[KnfStmt], KnfExpr) {
-  ...
+  let stmts = Array::new()
+  let (cond_stmts, cond_knf) = self.expr_to_knf(if_expr.cond)
+  stmts.append(cond_stmts)
+  let then_block = self.block_to_knf(if_expr.then_block)
+  let else_block = match if_expr.else_block {
+    Some(Left(nested_if)) => {
+      let (nested_stmts, nested_expr) = self.if_expr_to_knf(nested_if)
+      KnfBlock::{ stmts: nested_stmts, final_expr: nested_expr }
+    }
+    Some(Right(block)) => self.block_to_knf(block)
+    None => KnfBlock::{ stmts: Array::new(), final_expr: KnfExpr::Unit }
+  }
+  let if_knf = KnfExpr::If(cond_knf, then_block, else_block)
+  (stmts, if_knf)
 }
 
 ///|
 pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
-  let s = match self {
+  match self {
     Unit => "()"
     Int(v) => v.to_string()
     UInt(v) => v.to_string()
@@ -1041,11 +1072,10 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
       let cond_str = cond.stringify()
       let then_str = then_block.stringify(ident=ident + 2)
       let else_str = else_block.stringify(ident=ident + 2)
-      "if \{cond_str} then \{then_str} else \{else_str}"
+      "if \{cond_str} \{then_str} else \{else_str}"
     }
     CreateStruct(struct_name) => "new \{struct_name}"
   }
-  " ".repeat(ident) + s
 }
 
 ///|
