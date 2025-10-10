@@ -146,6 +146,8 @@ fn Context::array_access_to_knf(Self, ApplyExpr, Expr) -> (Array[KnfStmt], KnfEx
 fn Context::assign_stmt_to_knf(Self, AssignStmt) -> Array[KnfStmt]
 fn Context::atom_expr_to_knf(Self, AtomExpr) -> (Array[KnfStmt], KnfExpr)
 fn Context::binary_expr_to_knf(Self, BinaryOp, Expr, Expr, TypeKind) -> (Array[KnfStmt], KnfExpr)
+fn Context::bind_pat_and_expr_to_knf(Self, Pattern, TypeKind, KnfExpr) -> (Array[KnfStmt], Name)
+fn Context::bind_pat_and_name_to_knf(Self, Pattern, TypeKind, Name) -> Array[KnfStmt]
 fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
 fn Context::block_to_knf(Self, BlockExpr) -> KnfBlock
 fn Context::call_expr_to_knf(Self, ApplyExpr, Array[Expr]) -> (Array[KnfStmt], KnfExpr)
@@ -156,10 +158,12 @@ fn Context::get_error_msg(Self, Token, String) -> String
 fn Context::get_ident_type(Self, String) -> TypeKind?
 fn Context::get_knf_name(Self, String) -> Name
 fn Context::if_expr_to_knf(Self, IfExpr) -> (Array[KnfStmt], KnfExpr)
+fn Context::left_value_to_knf(Self, LeftValue) -> (Array[KnfStmt], Name)
 fn Context::let_stmt_to_knf(Self, LetStmt) -> Array[KnfStmt]
 fn Context::multiple_exprs_to_knf(Self, Array[Expr]) -> (Array[KnfStmt], Array[Name])
 fn Context::new(String, source_file? : String) -> Self
 fn Context::new_name(Self, String) -> Name
+fn Context::parse(Self) -> Unit raise ParseError
 fn Context::parse_apply_expr(Self, ArrayView[Token]) -> (ApplyExpr, ArrayView[Token]) raise ParseError
 fn Context::parse_assign_stmt(Self, ArrayView[Token]) -> (AssignStmt, ArrayView[Token]) raise ParseError
 fn Context::parse_atom_expr(Self, ArrayView[Token]) -> (AtomExpr, ArrayView[Token]) raise ParseError
@@ -174,7 +178,6 @@ fn Context::parse_let_stmt(Self, ArrayView[Token]) -> (LetStmt, ArrayView[Token]
 fn Context::parse_param(Self, ArrayView[Token]) -> (Param, ArrayView[Token]) raise ParseError
 fn Context::parse_param_list(Self, ArrayView[Token]) -> (Array[Param], ArrayView[Token]) raise ParseError
 fn Context::parse_pattern(Self, ArrayView[Token]) -> (Pattern, ArrayView[Token]) raise ParseError
-fn Context::parse_program(Self) -> Unit raise ParseError
 fn Context::parse_stmt(Self, ArrayView[Token]) -> (Stmt, ArrayView[Token]) raise ParseError
 fn Context::parse_struct_def(Self, ArrayView[Token]) -> (StructDef, ArrayView[Token]) raise ParseError
 fn Context::parse_struct_field(Self, ArrayView[Token]) -> (StructField, ArrayView[Token]) raise ParseError
@@ -188,6 +191,7 @@ fn Context::print_error(Self, ParseError) -> Unit
 fn Context::push_env(Self) -> Unit
 fn Context::push_name_env(Self) -> Unit
 fn Context::set_env(Self, String, TypeKind) -> Unit
+fn Context::simple_let_tuple_to_knf(Self, Array[Pattern], Array[TypeKind], Array[Expr]) -> Array[KnfStmt]
 fn Context::stmt_to_knf(Self, Stmt) -> Array[KnfStmt]
 fn Context::tokenize(Self) -> Unit raise TokenizeError
 fn Context::top_function_to_knf(Self, TopFunction) -> KnfFunction
@@ -209,8 +213,8 @@ fn Context::type_check_return_stmt(Self, Expr) -> TypeKind raise TypeCheckError
 fn Context::type_check_stmt(Self, Stmt) -> TypeKind raise TypeCheckError
 fn Context::type_check_tuple_access_expr(Self, ApplyExpr, Int) -> TypeKind raise TypeCheckError
 fn Context::type_check_while_stmt(Self, WhileStmt) -> Unit raise TypeCheckError
+fn Context::typecheck(Self) -> Unit raise TypeCheckError
 fn Context::typecheck_function(Self, TopFunction) -> Unit raise TypeCheckError
-fn Context::typecheck_program(Self) -> Unit raise TypeCheckError
 fn Context::while_stmt_to_knf(Self, WhileStmt) -> Array[KnfStmt]
 
 pub struct Env[K, V] {
@@ -328,6 +332,13 @@ pub(all) enum KnfExpr {
   TupleLiteral(Array[Name])
 }
 fn KnfExpr::stringify(Self) -> String
+impl Show for KnfExpr
+
+pub(all) struct KnfExternFunc {
+  name : String
+  ty : TypeKind
+  params : Array[TypeKind]
+}
 
 pub(all) struct KnfFunction {
   name : String
@@ -336,11 +347,12 @@ pub(all) struct KnfFunction {
   body : KnfBlock
 }
 fn KnfFunction::stringify(Self) -> String
+impl Show for KnfFunction
 
 pub(all) enum KnfStmt {
   Let(Name, TypeKind, KnfExpr)
   LetMut(Name, TypeKind, KnfExpr)
-  Assign(Name, KnfExpr)
+  Assign(Name, Name)
   ArrayPut(Name, Name, KnfExpr)
   StructSet(Name, String, KnfExpr)
   If(KnfExpr, KnfBlock, KnfBlock)
@@ -350,6 +362,7 @@ pub(all) enum KnfStmt {
   ReturnVoid
 }
 fn KnfStmt::stringify(Self, ident~ : Int) -> String
+impl Show for KnfStmt
 
 pub(all) struct KnfStructDef {
   name : String
@@ -404,7 +417,7 @@ pub struct LetStmt {
 impl Eq for LetStmt
 impl Show for LetStmt
 
-pub struct Name {
+pub(all) struct Name {
   id : String
   slot : Int
 }

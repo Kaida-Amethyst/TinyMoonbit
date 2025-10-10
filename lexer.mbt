@@ -38,6 +38,7 @@ pub(all) enum BinaryOp {
   BitOr // |
 } derive(Eq)
 
+///|
 pub impl Show for BinaryOp with output(self, logger) {
   let s = match self {
     Add => "+"

@@ -53,8 +53,9 @@ pub(all) struct KnfStructDef {
   fields : Array[(String, TypeKind)]
 }
 
+///|
 pub(all) struct KnfExternFunc {
-  name: String
+  name : String
   ty : TypeKind
   params : Array[TypeKind]
 }
@@ -103,6 +104,7 @@ pub fn KnfFunction::stringify(self : KnfFunction) -> String {
   sb.to_string()
 }
 
+///|
 pub impl Show for KnfFunction with output(self, logger) {
   logger.write_string(self.stringify())
 }
@@ -232,10 +234,10 @@ pub fn Context::let_stmt_to_knf(
     panic()
   }
   if pattern.kind is Tuple(pats) &&
-     ty.kind is Tuple(tys) &&
-     expr.kind is ApplyExpr(apply_expr) &&
-     apply_expr.kind is AtomExpr(atom_expr) &&
-      atom_expr.kind is Tuple(element_exprs) {
+    ty.kind is Tuple(tys) &&
+    expr.kind is ApplyExpr(apply_expr) &&
+    apply_expr.kind is AtomExpr(atom_expr) &&
+    atom_expr.kind is Tuple(element_exprs) {
     return self.simple_let_tuple_to_knf(pats, tys, element_exprs)
   }
   let (stmts, expr) = self.expr_to_knf(expr)
@@ -249,11 +251,13 @@ pub fn Context::let_stmt_to_knf(
     }
     (Tuple(pats), Tuple(tys), TupleLiteral(tup)) => {
       guard pats.length() == tys.length() && pats.length() == tup.length() else {
-        println("Compiler ICE: Pattern, type, and expression length mismatch in tuple pattern.")
+        println(
+          "Compiler ICE: Pattern, type, and expression length mismatch in tuple pattern.",
+        )
         panic()
       }
       let all_stmts : Array[KnfStmt] = stmts
-      for i in 0 ..<pats.length() {
+      for i in 0..<pats.length() {
         let pat = pats[i]
         let ty = tys[i]
         let n = tup[i]
@@ -266,7 +270,7 @@ pub fn Context::let_stmt_to_knf(
       let all_stmts : Array[KnfStmt] = stmts
       let n = self.new_name("tmp")
       all_stmts.push(KnfStmt::Let(n, ty.kind, expr))
-      for i in 0 ..<pats.length() {
+      for i in 0..<pats.length() {
         let pat = pats[i]
         let ty = tys[i]
         let n = self.new_name("tmp")
@@ -283,34 +287,38 @@ pub fn Context::let_stmt_to_knf(
   }
 }
 
+///|
 pub fn Context::simple_let_tuple_to_knf(
-  self: Context,
-  pats: Array[Pattern],
-  tys: Array[TypeKind],
-  expr: Array[Expr]
+  self : Context,
+  pats : Array[Pattern],
+  tys : Array[TypeKind],
+  expr : Array[Expr],
 ) -> Array[KnfStmt] {
-  let stmts: Array[KnfStmt] = Array::new()
+  let stmts : Array[KnfStmt] = Array::new()
   guard pats.length() == tys.length() && pats.length() == expr.length() else {
-    println("Compiler ICE: Pattern, type, and expression length mismatch in simple let tuple.")
+    println(
+      "Compiler ICE: Pattern, type, and expression length mismatch in simple let tuple.",
+    )
     panic()
   }
-  for i in 0 ..<pats.length() {
+  for i in 0..<pats.length() {
     let pat = pats[i]
     let ty = tys[i]
     let e = expr[i]
     let (expr_stmts, expr_knf) = self.expr_to_knf(e)
     stmts.append(expr_stmts)
-    let (bind_stmts, name) = self.bind_pat_and_expr_to_knf(pat, ty, expr_knf)
+    let bind_stmts = self.bind_pat_and_expr_to_knf(pat, ty, expr_knf)
     stmts.append(bind_stmts)
   }
   stmts
 }
 
+///|
 pub fn Context::bind_pat_and_name_to_knf(
   self : Self,
   pat : Pattern,
   ty : TypeKind,
-  name: Name,
+  name : Name,
 ) -> Array[KnfStmt] {
   let stmts : Array[KnfStmt] = Array::new()
   match pat.kind {
@@ -326,10 +334,12 @@ pub fn Context::bind_pat_and_name_to_knf(
         panic()
       }
       guard pats.length() == tys.length() else {
-        println("Compiler ICE: Pattern and type length mismatch in tuple pattern.")
+        println(
+          "Compiler ICE: Pattern and type length mismatch in tuple pattern.",
+        )
         panic()
       }
-      for i in 0 ..<pats.length() {
+      for i in 0..<pats.length() {
         let pat = pats[i]
         let ty = tys[i]
         let field_name = self.new_name("tmp")
@@ -344,24 +354,25 @@ pub fn Context::bind_pat_and_name_to_knf(
   stmts
 }
 
+///|
 pub fn Context::bind_pat_and_expr_to_knf(
   self : Self,
   pat : Pattern,
   ty : TypeKind,
-  expr: KnfExpr,
-) -> (Array[KnfStmt], Name) {
+  expr : KnfExpr,
+) -> Array[KnfStmt] {
   let stmts : Array[KnfStmt] = Array::new()
   match pat.kind {
     Wildcard => {
       // let _ = expr;
       stmts.push(KnfStmt::ExprStmt(expr))
-      (stmts, self.new_name("tmp")) // Return a dummy name
+      stmts
     }
     Ident(pat_name) => {
       let pat_name = self.new_name(pat_name)
       let s = KnfStmt::Let(pat_name, ty, expr)
       stmts.push(s)
-      (stmts, pat_name)
+      stmts
     }
     Tuple(pats) => {
       guard ty is Tuple(tys) else {
@@ -369,12 +380,14 @@ pub fn Context::bind_pat_and_expr_to_knf(
         panic()
       }
       guard pats.length() == tys.length() else {
-        println("Compiler ICE: Pattern and type length mismatch in tuple pattern.")
+        println(
+          "Compiler ICE: Pattern and type length mismatch in tuple pattern.",
+        )
         panic()
       }
       let temp_name = self.new_name("tmp")
       stmts.push(KnfStmt::Let(temp_name, ty, expr))
-      for i in 0 ..<pats.length() {
+      for i in 0..<pats.length() {
         let pat = pats[i]
         let ty = tys[i]
         let field_name = self.new_name("tmp")
@@ -384,11 +397,10 @@ pub fn Context::bind_pat_and_expr_to_knf(
         let nested_stmts = self.bind_pat_and_name_to_knf(pat, ty, field_name)
         stmts.append(nested_stmts)
       }
-      (stmts, temp_name) // Return the temp name
+      stmts
     }
   }
 }
-
 
 ///|
 ///
@@ -452,9 +464,7 @@ pub fn Context::assign_stmt_to_knf(
     Ident(id) => {
       let name = self.get_knf_name(id)
       match op {
-        Assign => {
-          stmts.push(KnfStmt::Assign(name, expr_name))
-        }
+        Assign => stmts.push(KnfStmt::Assign(name, expr_name))
         PlusAssign => {
           let bin_expr = KnfExpr::Binary(Add, name, expr_name)
           let tmp_name = self.new_name("tmp")
@@ -498,7 +508,11 @@ pub fn Context::assign_stmt_to_knf(
   stmts
 }
 
-pub fn Context::left_value_to_knf(self:Self, left_value: LeftValue) -> (Array[KnfStmt], Name) {
+///|
+pub fn Context::left_value_to_knf(
+  self : Self,
+  left_value : LeftValue,
+) -> (Array[KnfStmt], Name) {
   ...
 }
 
@@ -526,15 +540,13 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
       sb.write_string("let \{name}: \{ty} = \{expr.stringify()};")
     KnfStmt::LetMut(name, ty, expr) =>
       sb.write_string("let mut \{name}: \{ty} = \{expr.stringify()};")
-    KnfStmt::Assign(name, expr) =>
-      sb.write_string("\{name.id} = \{expr};")
+    KnfStmt::Assign(name, expr) => sb.write_string("\{name.id} = \{expr};")
     KnfStmt::ArrayPut(array_name, index_name, expr) =>
       sb.write_string(
         "\{array_name.id}[\{index_name.id}] = \{expr.stringify()};",
       )
-    KnfStmt::StructSet(struct_name, field_name, expr) => {
+    KnfStmt::StructSet(struct_name, field_name, expr) =>
       sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
-    }
     KnfStmt::If(cond, then_block, else_block) => {
       sb.write_string("if \{cond.stringify()} ")
       sb.write_string(then_block.stringify(ident=ident + 2))
@@ -556,6 +568,7 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
   sb.to_string()
 }
 
+///|
 pub impl Show for KnfStmt with output(self, logger) {
   logger.write_string(self.stringify(ident=0))
 }
@@ -684,7 +697,9 @@ pub fn Context::array_access_to_knf(
     Ident(name) => name
     _ => {
       guard index_expr.ty is Some(ty) else {
-        println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
         panic()
       }
       let name = self.new_name("tmp")
@@ -947,6 +962,7 @@ pub fn KnfExpr::stringify(self : KnfExpr) -> String {
   }
 }
 
+///|
 pub impl Show for KnfExpr with output(self, logger) {
   logger.write_string(self.stringify())
 }

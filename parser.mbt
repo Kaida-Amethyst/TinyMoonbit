@@ -242,6 +242,7 @@ pub(all) enum TypeKind {
   Defined(String, Array[TypeKind]) // Array[Int], Map[String, Int]
 } derive(Eq)
 
+///|
 pub impl Show for TypeKind with output(self, logger) {
   let s = match self {
     Unit => "Unit"
@@ -262,14 +263,13 @@ pub impl Show for TypeKind with output(self, logger) {
       let param_str = params.map(ty => ty.to_string()).join(", ")
       "(\{param_str}) -> \{ret}"
     }
-    Defined(name, tys) => {
+    Defined(name, tys) =>
       if tys.length() is 0 {
         name
       } else {
         let inner = tys.map(ty => ty.to_string()).join(", ")
         "\{name}[\{inner}]"
       }
-    }
   }
   logger.write_string(s)
 }
@@ -2059,15 +2059,17 @@ pub fn Context::parse_pattern(
     [{ kind: Bracket('('), lineno, column }, .. tokens] => {
       let patterns : Array[Pattern] = Array::new()
       let tokens = loop tokens {
-        [{ kind: Bracket(')'), .. }, ..tokens] => break tokens
+        [{ kind: Bracket(')'), .. }, .. tokens] => break tokens
         [{ kind: Lower(_) | Wildcard | Bracket('('), .. }, ..] as tokens => {
           let (pat, rest) = self.parse_pattern(tokens)
           patterns.push(pat)
           continue rest
         }
-        [{kind: Comma, ..}, { kind: Lower(_) | Wildcard | Bracket('(') | Bracket(')'), ..}, ..] as tokens => {
-          continue tokens[1:]
-        }
+        [
+          { kind: Comma, .. },
+          { kind: Lower(_) | Wildcard | Bracket('(') | Bracket(')'), .. },
+          ..,
+        ] as tokens => continue tokens[1:]
         [] => {
           println("Compiler ICE: Failed Parsing Pattern Empty Token ArrayView")
           panic()
