@@ -5,22 +5,28 @@ pub struct Name {
 }
 
 pub fn Context::new_name(self: Self, n: String) -> Name {
-  guard self.current_func is Some(current_func) else {
-    println("Compiler ICE: Trying to create a new name outside of a function.")
-    panic()
-  }
-  let name_counter = match self.name_counter.get(current_func.fname) {
-    Some(counter) => counter
+  match self.name_env.get(n) {
+    Some({ id, slot }) => {
+      let name = Name::{id: id, slot: slot + 1}
+      self.name_env.set(n, name)
+      name
+    }
     None => {
-      let counter = Map::new()
-      self.name_counter.set(current_func.fname, counter)
-      counter
+      let name = Name::{id: n, slot: 0}
+      self.name_env.set(n, name)
+      name
     }
   }
-  let name_cnt = name_counter.get(n).unwrap_or(0)
-  let name = Name::{id: n, slot: name_cnt}
-  name_counter.set(n, name_cnt + 1)
-  name
+}
+
+pub fn Context::get_knf_name(self: Self, n: String) -> Name {
+  match self.name_env.get(n) {
+    Some(name) => name
+    None => {
+      println("Compiler ICE: Name \{n} not found in name environment.")
+      panic()
+    }
+  }
 }
 
 pub impl Show for Name with output(self, logger) {
@@ -51,9 +57,7 @@ pub(all) struct KnfFunction {
 }
 
 pub fn Context::top_function_to_knf(self: Self, func: TopFunction) -> KnfFunction {
-  // Set current function
-  self.current_func = Some(func)
-
+  self.push_name_env()
   // Convert parameters
   let params: Array[(Name, TypeKind)] = Array::new()
   for param in func.param_list {
@@ -64,6 +68,7 @@ pub fn Context::top_function_to_knf(self: Self, func: TopFunction) -> KnfFunctio
 
   let ty = func.ret_ty.kind
   let body = self.block_to_knf(func.body)
+  self.pop_name_env()
   KnfFunction::{name: func.fname, ty, params, body}
 }
 
@@ -279,6 +284,7 @@ pub(all) enum KnfExpr {
   Call(Name, Array[Name])
   ArrayGet(Name, Name)
   TupleGet(Name, Int)
+  CreateStruct(String)
   ArrayLiteral(Array[Name])
   TupleLiteral(Array[Name])
 }
@@ -326,8 +332,112 @@ pub fn Context::binary_expr_to_knf(self: Self, op: BinaryOp, lhs: Expr, rhs: Exp
   (stmts, result_expr)
 }
 
+//pub struct ApplyExpr {
+//  lineno : Int
+//  column : Int
+//  end_lineno : Int
+//  end_column : Int
+//  mut ty : TypeKind?
+//  kind : ApplyExprKind
+//} derive(Show, Eq)
+//
+/////|
+//pub enum ApplyExprKind {
+//  AtomExpr(AtomExpr)
+//  ArrayAccess(ApplyExpr, Expr)
+//  FieldAccess(ApplyExpr, String)
+//  TupleAccess(ApplyExpr, Int)
+//  Call(ApplyExpr, Array[Expr])
+//} derive(Show, Eq)
 pub fn Context::apply_expr_to_knf(self: Self, apply_expr: ApplyExpr) -> (Array[KnfStmt], KnfExpr) {
+  match apply_expr.kind {
+    AtomExpr(atom_expr) => self.atom_expr_to_knf(atom_expr)
+    ArrayAccess(array_expr, index_expr) => self.array_access_to_knf(array_expr, index_expr)
+    FieldAccess(struct_expr, field_name) => self.field_access_to_knf(struct_expr, field_name)
+    TupleAccess(tuple_expr, idx) => self.tuple_access_to_knf(tuple_expr, idx)
+    Call(func_expr, arg_exprs) => self.call_expr_to_knf(func_expr, arg_exprs)
+  }
+}
+
+pub fn Context::array_access_to_knf(self: Self, array_expr: ApplyExpr, index_expr: Expr) -> (Array[KnfStmt], KnfExpr) {
   ...
+}
+
+pub fn Context::field_access_to_knf(self: Self, struct_expr: ApplyExpr, field_name: String) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+pub fn Context::tuple_access_to_knf(self: Self, tuple_expr: ApplyExpr, idx: Int) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+pub fn Context::call_expr_to_knf(self: Self, func_expr: ApplyExpr, arg_exprs: Array[Expr]) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+pub fn Context::atom_expr_to_knf(
+  self: Self,
+  atom_expr: AtomExpr
+) -> (Array[KnfStmt], KnfExpr) {
+  let stmts: Array[KnfStmt] = Array::new()
+  let e = match atom_expr.kind {
+    Unit => KnfExpr::Unit
+    Int(v) => Int(v)
+    UInt(v) => UInt(v)
+    Int64(v) => Int64(v)
+    UInt64(v) => UInt64(v)
+    Float(v) => Float(v)
+    Double(v) => Double(v)
+    Bool(v) => Bool(v)
+    String(v) => String(v)
+    Ident(id) => {
+      let name = self.get_knf_name(id)
+      KnfExpr::Ident(name)
+    }
+    Paren(e) => {
+      let (inner_stmts, inner_expr) = self.expr_to_knf(e)
+      stmts.append(inner_stmts)
+      inner_expr
+    }
+    Tuple(elements) => {
+      let (element_stmts, element_names) = self.multiple_exprs_to_knf(elements)
+      stmts.append(element_stmts)
+      KnfExpr::TupleLiteral(element_names)
+    }
+    Array(elements) => {
+      let (element_stmts, element_names) = self.multiple_exprs_to_knf(elements)
+      stmts.append(element_stmts)
+      KnfExpr::ArrayLiteral(element_names)
+    }
+    StructConstruct(_) => {
+      println("Unimplemented yet")
+      panic()
+    }
+  }
+  (stmts, e)
+}
+
+pub fn Context::multiple_exprs_to_knf(self: Self, exprs: Array[Expr]) -> (Array[KnfStmt], Array[Name]) {
+  let stmts: Array[KnfStmt] = Array::new()
+  let names: Array[Name] = Array::new()
+  for expr in exprs {
+    let (expr_stmts, expr_knf) = self.expr_to_knf(expr)
+    stmts.append(expr_stmts)
+    let name = match expr_knf {
+      Ident(name) => name
+      _ => {
+        guard expr.ty is Some(ty) else {
+          println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+          panic()
+        }
+        let name = self.new_name("tmp")
+        stmts.push(KnfStmt::Let(name, ty, expr_knf))
+        name
+      }
+    }
+    names.push(name)
+  }
+  (stmts, names)
 }
 
 pub fn Context::if_expr_to_knf(self: Self, if_expr: IfExpr) -> (Array[KnfStmt], KnfExpr) {
@@ -373,5 +483,6 @@ pub fn KnfExpr::stringify(self: KnfExpr) -> String {
       }
       sb.to_string()
     }
+    KnfExpr::CreateStruct(struct_name) => "new \{struct_name}"
   }
 }

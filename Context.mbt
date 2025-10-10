@@ -18,7 +18,7 @@ pub struct Context {
   mut current_func : TopFunction?
 
   // Knf Phase
-  name_counter: Map[String, Map[String, Int]] // for generating unique variable names
+  mut name_env: Env[String, Name]
 
   //
   source_file : String
@@ -37,22 +37,28 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     top_lets: Map::new(),
     type_env: Env::new(),
     current_func: None,
-    name_counter: Map::new(),
+    name_env: Env::new(),
     source_file,
   }
 }
 
 ///|
+///
+/// TODO: rename to `push_type_env`
 pub fn Context::push_env(self : Self) -> Unit {
   self.type_env = self.type_env.sub_env()
 }
 
 ///|
+///
+/// TODO: rename to `pop_type_env`
 pub fn Context::pop_env(self : Self) -> Unit {
   self.type_env = self.type_env.parent.unwrap()
 }
 
 ///|
+///
+/// TODO: rename to `set_type_env`
 pub fn Context::set_env(self : Self, k : String, v : TypeKind) -> Unit {
   self.type_env.set(k, v)
 }
@@ -60,6 +66,14 @@ pub fn Context::set_env(self : Self, k : String, v : TypeKind) -> Unit {
 ///|
 pub fn Context::get_ident_type(self : Self, k : String) -> TypeKind? {
   self.type_env.get(k)
+}
+
+pub fn Context::push_name_env(self : Self) -> Unit {
+  self.name_env = self.name_env.sub_env()
+}
+
+pub fn Context::pop_name_env(self : Self) -> Unit {
+  self.name_env = self.name_env.parent.unwrap()
 }
 
 ///|
