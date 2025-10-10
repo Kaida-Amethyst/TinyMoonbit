@@ -108,7 +108,7 @@
 ///   pattern ("if" Expr)? "=>" Expr ";"
 
 ///|
-pub fn Context::parse_program(self : Self) -> Unit raise ParseError {
+pub fn Context::parse(self : Self) -> Unit raise ParseError {
   guard self.tokens.length() > 0 else {
     println("Compiler ICE: Should tokenize before parsing")
     panic()
@@ -240,7 +240,39 @@ pub(all) enum TypeKind {
   Array(TypeKind)
   Function(Array[TypeKind], TypeKind)
   Defined(String, Array[TypeKind]) // Array[Int], Map[String, Int]
-} derive(Show, Eq)
+} derive(Eq)
+
+pub impl Show for TypeKind with output(self, logger) {
+  let s = match self {
+    Unit => "Unit"
+    Bool => "Bool"
+    Int => "Int"
+    Int64 => "Int64"
+    UInt => "UInt"
+    UInt64 => "UInt64"
+    Float => "Float"
+    Double => "Double"
+    String => "String"
+    Tuple(tys) => {
+      let inner = tys.map(ty => ty.to_string()).join(", ")
+      "(\{inner})"
+    }
+    Array(ty) => "Array[\{ty}]"
+    Function(params, ret) => {
+      let param_str = params.map(ty => ty.to_string()).join(", ")
+      "(\{param_str}) -> \{ret}"
+    }
+    Defined(name, tys) => {
+      if tys.length() is 0 {
+        name
+      } else {
+        let inner = tys.map(ty => ty.to_string()).join(", ")
+        "\{name}[\{inner}]"
+      }
+    }
+  }
+  logger.write_string(s)
+}
 
 ///|
 pub fn Context::parse_type(
@@ -2026,12 +2058,19 @@ pub fn Context::parse_pattern(
     }
     [{ kind: Bracket('('), lineno, column }, .. tokens] => {
       let patterns : Array[Pattern] = Array::new()
-      loop tokens {
-        [{ kind: Bracket(')'), .. }, ..] => break
+      let tokens = loop tokens {
+        [{ kind: Bracket(')'), .. }, ..tokens] => break tokens
         [{ kind: Lower(_) | Wildcard | Bracket('('), .. }, ..] as tokens => {
           let (pat, rest) = self.parse_pattern(tokens)
           patterns.push(pat)
           continue rest
+        }
+        [{kind: Comma, ..}, { kind: Lower(_) | Wildcard | Bracket('(') | Bracket(')'), ..}, ..] as tokens => {
+          continue tokens[1:]
+        }
+        [] => {
+          println("Compiler ICE: Failed Parsing Pattern Empty Token ArrayView")
+          panic()
         }
         tokens => raise ParseError((tokens[0], "InValid Pattern"))
       }

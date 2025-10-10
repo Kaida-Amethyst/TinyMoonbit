@@ -36,7 +36,30 @@ pub(all) enum BinaryOp {
   Or // ||
   BitAnd // &
   BitOr // |
-} derive(Show, Eq)
+} derive(Eq)
+
+pub impl Show for BinaryOp with output(self, logger) {
+  let s = match self {
+    Add => "+"
+    Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    ShiftLeft => "<<"
+    ShiftRight => ">>"
+    Eq => "=="
+    NE => "!="
+    LT => "<"
+    GT => ">"
+    LE => "<="
+    GE => ">="
+    And => "&&"
+    Or => "||"
+    BitAnd => "&"
+    BitOr => "|"
+  }
+  logger.write_string(s)
+}
 
 ///|
 fn BinaryOp::precedence(self : Self) -> Int {

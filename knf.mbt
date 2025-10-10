@@ -1,5 +1,5 @@
 ///|
-pub struct Name {
+pub(all) struct Name {
   id : String
   slot : Int
 }
@@ -37,7 +37,7 @@ pub impl Show for Name with output(self, logger) {
     logger.write_string(self.id)
     return
   }
-  logger.write_string("\{self.id}.\{self.slot}")
+  logger.write_string("\{self.id}$\{self.slot}")
 }
 
 ///|
@@ -84,7 +84,7 @@ pub fn Context::top_function_to_knf(
 pub fn KnfFunction::stringify(self : KnfFunction) -> String {
   let sb = StringBuilder::new()
   let { name, ty, params, body } = self
-  sb.write_string("fn \{name} (")
+  sb.write_string("fn \{name}(")
   let params_str = params
     .map(pair => {
       let (n, t) = pair
@@ -95,6 +95,10 @@ pub fn KnfFunction::stringify(self : KnfFunction) -> String {
   sb.write_string(") -> \{ty} ")
   sb.write_string(body.stringify(ident=2))
   sb.to_string()
+}
+
+pub impl Show for KnfFunction with output(self, logger) {
+  logger.write_string(self.stringify())
 }
 
 ///|
@@ -110,7 +114,15 @@ pub fn Context::block_to_knf(self : Self, block : BlockExpr) -> KnfBlock {
     let knf_stmt = self.stmt_to_knf(stmt)
     stmts.append(knf_stmt)
   }
-  let final_expr = KnfExpr::Unit
+  let last_stmt = stmts.last()
+  let final_expr = match last_stmt {
+    None => KnfExpr::Unit
+    Some(ExprStmt(expr)) => {
+      let _ = stmts.pop() // Remove the last ExprStmt
+      expr
+    }
+    _ => KnfExpr::Unit
+  }
   KnfBlock::{ stmts, final_expr }
 }
 
@@ -124,6 +136,9 @@ pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
     sb.write_string(stmt.stringify(ident~))
     sb.write_string("\n")
   }
+  sb.write_string(" ".repeat(ident))
+  sb.write_string(self.final_expr.stringify())
+  sb.write_string("\n")
   sb.write_string(" ".repeat(ident - 2))
   sb.write_string("}")
   sb.to_string()
@@ -180,24 +195,115 @@ pub fn Context::let_stmt_to_knf(
 ) -> Array[KnfStmt] {
   let { pattern, ty, expr, .. } = let_stmt
   let (stmts, expr) = self.expr_to_knf(expr)
-  match (pattern.kind, ty, expr) {
+  guard ty is Some(ty) else {
+    println(
+      "Compiler ICE: Let Stmt must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  match (pattern.kind, ty.kind, expr) {
     (Wildcard, _, expr) =>
       // let _ = expr;
       [..stmts, KnfStmt::ExprStmt(expr)]
-    (Ident(name), Some(ty), expr) => {
+    (Ident(name), ty, expr) => {
       let name = self.new_name(name)
-      [..stmts, KnfStmt::Let(name, ty.kind, expr)]
+      [..stmts, KnfStmt::Let(name, ty, expr)]
     }
-    (Tuple(pats), ty, TupleLiteral(tup)) => ...
-    (Tuple(pats), ty, expr) => ...
+    (Tuple(pats), Tuple(tys), TupleLiteral(tup)) => {
+      guard pats.length() == tys.length() && pats.length() == tup.length() else {
+        println("Compiler ICE: Pattern, type, and expression length mismatch in tuple pattern.")
+        panic()
+      }
+      let all_stmts : Array[KnfStmt] = stmts
+      for i in 0 ..<pats.length() {
+        let pat = pats[i]
+        let ty = tys[i]
+        let n = tup[i]
+        let bind_stmts = self.bind_pat_and_name_to_knf(pat, ty, n)
+        all_stmts.append(bind_stmts)
+      }
+      all_stmts
+    }
+    (Tuple(pats), Tuple(tys), expr) => {
+      let all_stmts : Array[KnfStmt] = stmts
+      let n = self.new_name("tmp")
+      all_stmts.push(KnfStmt::Let(n, ty.kind, expr))
+      for i in 0 ..<pats.length() {
+        let pat = pats[i]
+        let ty = tys[i]
+        let n = self.new_name("tmp")
+        all_stmts.push(KnfStmt::Let(n, ty, KnfExpr::TupleGet(n, i)))
+        let bind_stmts = self.bind_pat_and_name_to_knf(pat, ty, n)
+        all_stmts.append(bind_stmts)
+      }
+      all_stmts
+    }
     _ => {
-      println(
-        "Compiler ICE: Unsupported pattern in let statement in KNF phase.",
-      )
+      println("Compiler ICE: Unsupported pattern in let statement.")
       panic()
     }
   }
 }
+
+pub fn Context::bind_pat_and_name_to_knf(
+  self : Self,
+  pat : Pattern,
+  ty : TypeKind,
+  name: Name,
+) -> Array[KnfStmt] {
+  let stmts : Array[KnfStmt] = Array::new()
+  match pat.kind {
+    Wildcard => () // Do nothing
+    Ident(pat_name) => {
+      let pat_name = self.new_name(pat_name)
+      let s = KnfStmt::Let(pat_name, ty, KnfExpr::Ident(name))
+      stmts.push(s)
+    }
+    Tuple(pats) => {
+      guard ty is Tuple(tys) else {
+        println("Compiler ICE: Type must be a tuple type for tuple pattern.")
+        panic()
+      }
+      guard pats.length() == tys.length() else {
+        println("Compiler ICE: Pattern and type length mismatch in tuple pattern.")
+        panic()
+      }
+      for i in 0 ..<pats.length() {
+        let pat = pats[i]
+        let ty = tys[i]
+        let field_name = self.new_name("tmp")
+        let get_expr = KnfExpr::TupleGet(name, i)
+        let get_stmt = KnfStmt::Let(field_name, ty, get_expr)
+        stmts.push(get_stmt)
+        let nested_stmts = self.bind_pat_and_name_to_knf(pat, ty, field_name)
+        stmts.append(nested_stmts)
+      }
+    }
+  }
+  stmts
+}
+
+pub fn Context::bind_pat_and_expr_to_knf(
+  self : Self,
+  pat : Pattern,
+  ty : TypeKind,
+  expr: KnfExpr,
+) -> (Array[KnfStmt], Name) {
+  let stmts : Array[KnfStmt] = Array::new()
+  let name = match expr {
+    Ident(name) => name
+    _ => {
+      let name = self.new_name("tmp")
+      let s = KnfStmt::Let(name, ty, expr)
+      stmts.push(s)
+      name
+    }
+  }
+  let bind_stmts = self.bind_pat_and_name_to_knf(pat, ty, name)
+  stmts.append(bind_stmts)
+  (stmts, name)
+}
+
 
 //pub struct AssignStmt {
 //  lineno : Int
@@ -364,24 +470,7 @@ pub fn Context::binary_expr_to_knf(
   (stmts, result_expr)
 }
 
-//pub struct ApplyExpr {
-//  lineno : Int
-//  column : Int
-//  end_lineno : Int
-//  end_column : Int
-//  mut ty : TypeKind?
-//  kind : ApplyExprKind
-//} derive(Show, Eq)
-//
-
 ///|
-//pub enum ApplyExprKind {
-//  AtomExpr(AtomExpr)
-//  ArrayAccess(ApplyExpr, Expr)
-//  FieldAccess(ApplyExpr, String)
-//  TupleAccess(ApplyExpr, Int)
-//  Call(ApplyExpr, Array[Expr])
-//} derive(Show, Eq)
 pub fn Context::apply_expr_to_knf(
   self : Self,
   apply_expr : ApplyExpr,
@@ -403,7 +492,38 @@ pub fn Context::array_access_to_knf(
   array_expr : ApplyExpr,
   index_expr : Expr,
 ) -> (Array[KnfStmt], KnfExpr) {
-  ...
+  let (array_stmts, array_knf) = self.apply_expr_to_knf(array_expr)
+  let (index_stmts, index_knf) = self.expr_to_knf(index_expr)
+  let stmts = Array::new()
+  stmts..append(array_stmts)..append(index_stmts)
+  let array_name = match array_knf {
+    Ident(name) => name
+    _ => {
+      guard array_expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, array_knf))
+      name
+    }
+  }
+  let index_name = match index_knf {
+    Ident(name) => name
+    _ => {
+      guard index_expr.ty is Some(ty) else {
+        println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, index_knf))
+      name
+    }
+  }
+  let result_expr = KnfExpr::ArrayGet(array_name, index_name)
+  (stmts, result_expr)
 }
 
 ///|
@@ -421,7 +541,25 @@ pub fn Context::tuple_access_to_knf(
   tuple_expr : ApplyExpr,
   idx : Int,
 ) -> (Array[KnfStmt], KnfExpr) {
-  ...
+  let (tuple_stmts, tuple_knf) = self.apply_expr_to_knf(tuple_expr)
+  let stmts = Array::new()
+  stmts..append(tuple_stmts)
+  let tuple_name = match tuple_knf {
+    Ident(name) => name
+    _ => {
+      guard tuple_expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, tuple_knf))
+      name
+    }
+  }
+  let result_expr = KnfExpr::TupleGet(tuple_name, idx)
+  (stmts, result_expr)
 }
 
 ///|
@@ -430,7 +568,26 @@ pub fn Context::call_expr_to_knf(
   func_expr : ApplyExpr,
   arg_exprs : Array[Expr],
 ) -> (Array[KnfStmt], KnfExpr) {
-  ...
+  let (func_stmts, func_knf) = self.apply_expr_to_knf(func_expr)
+  let (arg_stmts, arg_names) = self.multiple_exprs_to_knf(arg_exprs)
+  let stmts = Array::new()
+  stmts..append(func_stmts)..append(arg_stmts)
+  let func_name = match func_knf {
+    Ident(name) => name
+    _ => {
+      guard func_expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, func_knf))
+      name
+    }
+  }
+  let result_expr = KnfExpr::Call(func_name, arg_names)
+  (stmts, result_expr)
 }
 
 ///|
@@ -516,34 +673,34 @@ pub fn Context::if_expr_to_knf(
 ///|
 pub fn KnfExpr::stringify(self : KnfExpr) -> String {
   match self {
-    KnfExpr::Unit => "()"
-    KnfExpr::Int(v) => v.to_string()
-    KnfExpr::UInt(v) => v.to_string()
-    KnfExpr::Int64(v) => v.to_string()
-    KnfExpr::UInt64(v) => v.to_string()
-    KnfExpr::Float(v) => v.to_string()
-    KnfExpr::Double(v) => v.to_string()
-    KnfExpr::Bool(v) => v.to_string()
-    KnfExpr::String(v) => "\"\{v}\""
-    KnfExpr::Ident(name) => name.to_string()
-    KnfExpr::Binary(op, left, right) => "\{left} \{op} \{right}"
-    KnfExpr::Not(name) => "!\{name}"
-    KnfExpr::Neg(name) => "-\{name}"
-    KnfExpr::Call(func_name, args) => {
+    Unit => "()"
+    Int(v) => v.to_string()
+    UInt(v) => v.to_string()
+    Int64(v) => v.to_string()
+    UInt64(v) => v.to_string()
+    Float(v) => v.to_string()
+    Double(v) => v.to_string()
+    Bool(v) => v.to_string()
+    String(v) => "\"\{v}\""
+    Ident(name) => name.to_string()
+    Binary(op, left, right) => "\{left} \{op} \{right}"
+    Not(name) => "!\{name}"
+    Neg(name) => "-\{name}"
+    Call(func_name, args) => {
       let args_str = args.map(arg => arg.to_string()).join(", ")
       "\{func_name}(\{args_str})"
     }
-    KnfExpr::ArrayGet(array_name, index_name) => "\{array_name}[\{index_name}]"
-    KnfExpr::TupleGet(tuple_name, index) => "\{tuple_name}.\{index}"
-    KnfExpr::ArrayLiteral(elements) => {
+    ArrayGet(array_name, index_name) => "\{array_name}[\{index_name}]"
+    TupleGet(tuple_name, index) => "\{tuple_name}.\{index}"
+    ArrayLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "[\{elements_str}]"
     }
-    KnfExpr::TupleLiteral(elements) => {
+    TupleLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "(\{elements_str})"
     }
-    KnfExpr::If(cond_name, then_block, else_block) => {
+    If(cond_name, then_block, else_block) => {
       let sb = StringBuilder::new()
       sb.write_string("if \{cond_name} ")
       sb.write_string(then_block.stringify(ident=2))
@@ -553,6 +710,6 @@ pub fn KnfExpr::stringify(self : KnfExpr) -> String {
       }
       sb.to_string()
     }
-    KnfExpr::CreateStruct(struct_name) => "new \{struct_name}"
+    CreateStruct(struct_name) => "new \{struct_name}"
   }
 }

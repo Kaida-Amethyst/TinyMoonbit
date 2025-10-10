@@ -142,7 +142,7 @@ fn main {
       return
     }
   }
-  ctx.parse_program() catch {
+  ctx.parse() catch {
     err => {
       ctx.print_error(err)
       return

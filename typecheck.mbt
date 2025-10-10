@@ -2,7 +2,7 @@
 pub suberror TypeCheckError String derive(Show)
 
 ///|
-pub fn Context::typecheck_program(self : Self) -> Unit raise TypeCheckError {
+pub fn Context::typecheck(self : Self) -> Unit raise TypeCheckError {
   let { top_lets, extern_functions, top_functions, .. } = self
   // 1. collect all function signatures
   let dup_container = Set::new()
