@@ -14,7 +14,6 @@ test "Atom Expr Knf Convert" {
   let ctx = Context::new(code)
   ctx..tokenize()..parse()..typecheck()
 
-
   let f = ctx.top_functions.get("foo").unwrap()
   let knf_func = ctx.top_function_to_knf(f)
 
@@ -152,19 +151,65 @@ test "Let Tuple Knf Convert" {
   let f = ctx.top_functions.get("foo").unwrap()
   let knf_func = ctx.top_function_to_knf(f)
 
-  println(knf_func)
+  let expected = 
+    #|fn foo() -> Int {
+    #|  let a: Int = 1;
+    #|  let b: Bool = true;
+    #|  let c: String = "hello";
+    #|  a
+    #|}
 
-  //let expected = 
-  //  #|fn foo() -> Int {
-  //  #|  let tmp: Int = 1;
-  //  #|  let tmp$1: Bool = true;
-  //  #|  let tmp$2: String = "hello";
-  //  #|  let tmp$3: (Int, Bool, String) = (tmp, tmp$1, tmp$2);
-  //  #|  let a: Int = tmp$3.0;
-  //  #|  let b: Bool = tmp$3.1;
-  //  #|  let c: String = tmp$3.2;
-  //  #|  a
-  //  #|}
-  //
-  //inspect(knf_func, content=expected)
+  inspect(knf_func, content=expected)
+}
+
+test "Assign Knf Convert" {
+  let code = 
+    #|fn foo() -> Int {
+    #|  let mut a = 1
+    #|  a = 2 + 3
+    #|  a
+    #|}
+
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()
+  let f = ctx.top_functions.get("foo").unwrap()
+  let knf_func = ctx.top_function_to_knf(f)
+
+  let expected = 
+    #|fn foo() -> Int {
+    #|  let mut a: Int = 1;
+    #|  let tmp: Int = 2;
+    #|  let tmp$1: Int = 3;
+    #|  let tmp$2: Int = tmp + tmp$1;
+    #|  a = tmp$2;
+    #|  a
+    #|}
+
+  inspect(knf_func, content=expected)
+
+  // PlusAssign
+  let code = 
+    #|fn foo() -> Int {
+    #|  let mut a = 1
+    #|  a += 2 + 3
+    #|  a
+    #|}
+
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()
+  let f = ctx.top_functions.get("foo").unwrap()
+  let knf_func = ctx.top_function_to_knf(f)
+
+  let expected = 
+    #|fn foo() -> Int {
+    #|  let mut a: Int = 1;
+    #|  let tmp: Int = 2;
+    #|  let tmp$1: Int = 3;
+    #|  let tmp$2: Int = tmp + tmp$1;
+    #|  let tmp$3: Int = a + tmp$2;
+    #|  a = tmp$3;
+    #|  a
+    #|}
+
+  inspect(knf_func, content=expected)
 }

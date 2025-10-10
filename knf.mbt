@@ -53,6 +53,12 @@ pub(all) struct KnfStructDef {
   fields : Array[(String, TypeKind)]
 }
 
+pub(all) struct KnfExternFunc {
+  name: String
+  ty : TypeKind
+  params : Array[TypeKind]
+}
+
 ///|
 pub(all) struct KnfFunction {
   name : String
@@ -148,7 +154,7 @@ pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
 pub(all) enum KnfStmt {
   Let(Name, TypeKind, KnfExpr)
   LetMut(Name, TypeKind, KnfExpr)
-  Assign(Name, KnfExpr)
+  Assign(Name, Name)
   ArrayPut(Name, Name, KnfExpr)
   StructSet(Name, String, KnfExpr)
   If(KnfExpr, KnfBlock, KnfBlock)
@@ -189,18 +195,50 @@ pub fn Context::stmt_to_knf(self : Self, stmt : Stmt) -> Array[KnfStmt] {
 }
 
 ///|
+///
+/// Convert Let Stmt to KnfStmt
+///
+/// ```mbt
+/// let code = 
+///   #|fn foo() -> Int {
+///   #|  let (a, b, c) = (1, true, "hello")
+///   #|  a
+///   #|}
+///
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+/// let f = ctx.top_functions.get("foo").unwrap()
+/// let knf_func = ctx.top_function_to_knf(f)
+///
+/// let expected = 
+///   #|fn foo() -> Int {
+///   #|  let a: Int = 1;
+///   #|  let b: Bool = true;
+///   #|  let c: String = "hello";
+///   #|  a
+///   #|}
+///
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::let_stmt_to_knf(
   self : Self,
   let_stmt : LetStmt,
 ) -> Array[KnfStmt] {
   let { pattern, ty, expr, .. } = let_stmt
-  let (stmts, expr) = self.expr_to_knf(expr)
   guard ty is Some(ty) else {
     println(
       "Compiler ICE: Let Stmt must have been inferred type in Type Checking phase.",
     )
     panic()
   }
+  if pattern.kind is Tuple(pats) &&
+     ty.kind is Tuple(tys) &&
+     expr.kind is ApplyExpr(apply_expr) &&
+     apply_expr.kind is AtomExpr(atom_expr) &&
+      atom_expr.kind is Tuple(element_exprs) {
+    return self.simple_let_tuple_to_knf(pats, tys, element_exprs)
+  }
+  let (stmts, expr) = self.expr_to_knf(expr)
   match (pattern.kind, ty.kind, expr) {
     (Wildcard, _, expr) =>
       // let _ = expr;
@@ -243,6 +281,29 @@ pub fn Context::let_stmt_to_knf(
       panic()
     }
   }
+}
+
+pub fn Context::simple_let_tuple_to_knf(
+  self: Context,
+  pats: Array[Pattern],
+  tys: Array[TypeKind],
+  expr: Array[Expr]
+) -> Array[KnfStmt] {
+  let stmts: Array[KnfStmt] = Array::new()
+  guard pats.length() == tys.length() && pats.length() == expr.length() else {
+    println("Compiler ICE: Pattern, type, and expression length mismatch in simple let tuple.")
+    panic()
+  }
+  for i in 0 ..<pats.length() {
+    let pat = pats[i]
+    let ty = tys[i]
+    let e = expr[i]
+    let (expr_stmts, expr_knf) = self.expr_to_knf(e)
+    stmts.append(expr_stmts)
+    let (bind_stmts, name) = self.bind_pat_and_expr_to_knf(pat, ty, expr_knf)
+    stmts.append(bind_stmts)
+  }
+  stmts
 }
 
 pub fn Context::bind_pat_and_name_to_knf(
@@ -290,49 +351,154 @@ pub fn Context::bind_pat_and_expr_to_knf(
   expr: KnfExpr,
 ) -> (Array[KnfStmt], Name) {
   let stmts : Array[KnfStmt] = Array::new()
-  let name = match expr {
-    Ident(name) => name
-    _ => {
-      let name = self.new_name("tmp")
-      let s = KnfStmt::Let(name, ty, expr)
+  match pat.kind {
+    Wildcard => {
+      // let _ = expr;
+      stmts.push(KnfStmt::ExprStmt(expr))
+      (stmts, self.new_name("tmp")) // Return a dummy name
+    }
+    Ident(pat_name) => {
+      let pat_name = self.new_name(pat_name)
+      let s = KnfStmt::Let(pat_name, ty, expr)
       stmts.push(s)
-      name
+      (stmts, pat_name)
+    }
+    Tuple(pats) => {
+      guard ty is Tuple(tys) else {
+        println("Compiler ICE: Type must be a tuple type for tuple pattern.")
+        panic()
+      }
+      guard pats.length() == tys.length() else {
+        println("Compiler ICE: Pattern and type length mismatch in tuple pattern.")
+        panic()
+      }
+      let temp_name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(temp_name, ty, expr))
+      for i in 0 ..<pats.length() {
+        let pat = pats[i]
+        let ty = tys[i]
+        let field_name = self.new_name("tmp")
+        let get_expr = KnfExpr::TupleGet(temp_name, i)
+        let get_stmt = KnfStmt::Let(field_name, ty, get_expr)
+        stmts.push(get_stmt)
+        let nested_stmts = self.bind_pat_and_name_to_knf(pat, ty, field_name)
+        stmts.append(nested_stmts)
+      }
+      (stmts, temp_name) // Return the temp name
     }
   }
-  let bind_stmts = self.bind_pat_and_name_to_knf(pat, ty, name)
-  stmts.append(bind_stmts)
-  (stmts, name)
 }
 
 
-//pub struct AssignStmt {
-//  lineno : Int
-//  column : Int
-//  end_lineno : Int
-//  end_column : Int
-//  left_value : LeftValue
-//  op : AssignOp
-//  expr : Expr
-//} derive(Show, Eq)
-//pub struct LeftValue {
-//  lineno : Int
-//  column : Int
-//  end_lineno : Int
-//  end_column : Int
-//  kind : LeftValueKind
-//} derive(Show, Eq)
-//
-
 ///|
-//pub enum LeftValueKind {
-//  Ident(String)
-//  ArrayAccess(LeftValue, Expr)
-//  FieldAccess(LeftValue, String)
-//} derive(Show, Eq)
+///
+/// Convert Assign Stmt to KnfStmt
+///
+/// ```mbt
+/// let code = 
+///   #|fn foo() -> Int {
+///   #|  let mut a = 1
+///   #|  a += 2 + 3
+///   #|  a
+///   #|}
+///
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+/// let f = ctx.top_functions.get("foo").unwrap()
+/// let knf_func = ctx.top_function_to_knf(f)
+///
+/// let expected = 
+///   #|fn foo() -> Int {
+///   #|  let mut a: Int = 1;
+///   #|  let tmp: Int = 2;
+///   #|  let tmp$1: Int = 3;
+///   #|  let tmp$2: Int = tmp + tmp$1;
+///   #|  let tmp$3: Int = a + tmp$2;
+///   #|  a = tmp$3;
+///   #|  a
+///   #|}
+///
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::assign_stmt_to_knf(
   self : Self,
   assign_stmt : AssignStmt,
 ) -> Array[KnfStmt] {
+  let stmts : Array[KnfStmt] = Array::new()
+  let { left_value, op, expr, .. } = assign_stmt
+  let (expr_stmts, expr_knf) = self.expr_to_knf(expr)
+  stmts.append(expr_stmts)
+  let expr_name = match expr_knf {
+    Ident(name) => name
+    _ => {
+      guard expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, expr_knf))
+      name
+    }
+  }
+  guard expr.ty is Some(ty) else {
+    println(
+      "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  match left_value.kind {
+    Ident(id) => {
+      let name = self.get_knf_name(id)
+      match op {
+        Assign => {
+          stmts.push(KnfStmt::Assign(name, expr_name))
+        }
+        PlusAssign => {
+          let bin_expr = KnfExpr::Binary(Add, name, expr_name)
+          let tmp_name = self.new_name("tmp")
+          let plus_stmt = KnfStmt::Let(tmp_name, ty, bin_expr)
+          stmts.push(plus_stmt)
+          stmts.push(KnfStmt::Assign(name, tmp_name))
+        }
+        MinusAssign => {
+          let bin_expr = KnfExpr::Binary(Sub, name, expr_name)
+          let tmp_name = self.new_name("tmp")
+          let minus_stmt = KnfStmt::Let(tmp_name, ty, bin_expr)
+          stmts.push(minus_stmt)
+          stmts.push(KnfStmt::Assign(name, tmp_name))
+        }
+        MultAssign => {
+          let bin_expr = KnfExpr::Binary(Mul, name, expr_name)
+          let tmp_name = self.new_name("tmp")
+          let mult_stmt = KnfStmt::Let(tmp_name, ty, bin_expr)
+          stmts.push(mult_stmt)
+          stmts.push(KnfStmt::Assign(name, tmp_name))
+        }
+        DivAssign => {
+          let bin_expr = KnfExpr::Binary(Div, name, expr_name)
+          let tmp_name = self.new_name("tmp")
+          let div_stmt = KnfStmt::Let(tmp_name, ty, bin_expr)
+          stmts.push(div_stmt)
+          stmts.push(KnfStmt::Assign(name, tmp_name))
+        }
+        ModAssign => {
+          let bin_expr = KnfExpr::Binary(Mod, name, expr_name)
+          let tmp_name = self.new_name("tmp")
+          let mod_stmt = KnfStmt::Let(tmp_name, ty, bin_expr)
+          stmts.push(mod_stmt)
+          stmts.push(KnfStmt::Assign(name, tmp_name))
+        }
+      }
+    }
+    ArrayAccess(_) => abort("Unimplemented yet")
+    FieldAccess(_) => abort("Unimplemented yet")
+  }
+  stmts
+}
+
+pub fn Context::left_value_to_knf(self:Self, left_value: LeftValue) -> (Array[KnfStmt], Name) {
   ...
 }
 
@@ -361,14 +527,14 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
     KnfStmt::LetMut(name, ty, expr) =>
       sb.write_string("let mut \{name}: \{ty} = \{expr.stringify()};")
     KnfStmt::Assign(name, expr) =>
-      sb.write_string("\{name.id} = \{expr.stringify()};")
+      sb.write_string("\{name.id} = \{expr};")
     KnfStmt::ArrayPut(array_name, index_name, expr) =>
       sb.write_string(
         "\{array_name.id}[\{index_name.id}] = \{expr.stringify()};",
       )
-    //KnfStmt::StructPut(struct_name, field_name, expr) => {
-    //  sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
-    //}
+    KnfStmt::StructSet(struct_name, field_name, expr) => {
+      sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
+    }
     KnfStmt::If(cond, then_block, else_block) => {
       sb.write_string("if \{cond.stringify()} ")
       sb.write_string(then_block.stringify(ident=ident + 2))
@@ -388,6 +554,10 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
       sb.write_string("\{struct_name}.\{field_name} = \{expr.stringify()};")
   }
   sb.to_string()
+}
+
+pub impl Show for KnfStmt with output(self, logger) {
+  logger.write_string(self.stringify(ident=0))
 }
 
 ///|
@@ -563,6 +733,34 @@ pub fn Context::tuple_access_to_knf(
 }
 
 ///|
+///
+/// Convert Call Expr to KnfExpr
+///
+/// ```mbt
+/// let code = 
+///   #|extern fn add(a: Int, b: Int) -> Int = "add";
+///   #|
+///   #|fn foo() -> Int {
+///   #|  let a = add(1, 2)
+///   #|  a
+///   #|}
+///
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+/// let _ = ctx.new_name("add") // extern function
+/// let f = ctx.top_functions.get("foo").unwrap()
+/// let knf_func = ctx.top_function_to_knf(f)
+///
+/// let expected = 
+///   #|fn foo() -> Int {
+///   #|  let tmp: Int = 1;
+///   #|  let tmp$1: Int = 2;
+///   #|  let a: Int = add(tmp, tmp$1);
+///   #|  a
+///   #|}
+///
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::call_expr_to_knf(
   self : Self,
   func_expr : ApplyExpr,
@@ -591,6 +789,41 @@ pub fn Context::call_expr_to_knf(
 }
 
 ///|
+///
+/// Convert AtomExpr to KnfExpr
+///
+/// ```mbt
+/// let code = 
+///   #|fn foo() -> Int {
+///   #|  let b = 1
+///   #|  let a = true
+///   #|  let mut a = "hello"
+///   #|  let a = 3.14
+///   #|  let mut a = ()
+///   #|  let a = b
+///   #|  a
+///   #|}
+///
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+///
+/// let f = ctx.top_functions.get("foo").unwrap()
+/// 
+/// let knf_func = ctx.top_function_to_knf(f)
+///
+/// let expected = 
+///   #|fn foo() -> Int {
+///   #|  let b: Int = 1;
+///   #|  let a: Bool = true;
+///   #|  let mut a$1: String = "hello";
+///   #|  let a$2: Double = 3.14;
+///   #|  let mut a$3: Unit = ();
+///   #|  let a$4: Int = b;
+///   #|  a$4
+///   #|}
+///
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::atom_expr_to_knf(
   self : Self,
   atom_expr : AtomExpr,
@@ -712,4 +945,8 @@ pub fn KnfExpr::stringify(self : KnfExpr) -> String {
     }
     CreateStruct(struct_name) => "new \{struct_name}"
   }
+}
+
+pub impl Show for KnfExpr with output(self, logger) {
+  logger.write_string(self.stringify())
 }
