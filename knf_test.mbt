@@ -196,3 +196,33 @@ test "Assign Knf Convert" {
     #|}
   inspect(knf_func, content=expected)
 }
+
+test "If Expr Knf Convert" {
+  let code = 
+    #|fn max(a: Int, b: Int) -> Int {
+    #|  let res = if a > b {
+    #|    a
+    #|  } else {
+    #|    b
+    #|  }
+    #|  res
+    #|}
+
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()
+  let f = ctx.top_functions.get("max").unwrap()
+  let knf_func = ctx.top_function_to_knf(f)
+
+  let expected =
+    #|fn max(a: Int, b: Int) -> Int {
+    #|  let tmp: Bool = a > b;
+    #|  let res = if tmp {
+    #|    a
+    #|  } else {
+    #|    b
+    #|  }
+    #|  res
+    #|}
+
+  inspect(knf_func, content=expected)
+}
