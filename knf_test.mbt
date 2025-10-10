@@ -228,3 +228,63 @@ test "If Expr Knf Convert" {
     #|}
   inspect(knf_func, content=expected)
 }
+
+///|
+test "While Stmt Knf Convert" {
+  let code =
+    #|fn foo() -> Int {
+    #|  let mut i = 0
+    #|  while i < 10 {
+    #|    i += 1
+    #|  }
+    #|  i
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()
+  let f = ctx.top_functions.get("foo").unwrap()
+  let knf_func = ctx.top_function_to_knf(f)
+  let expected =
+    #|fn foo() -> Int {
+    #|  let mut i: Int = 0;
+    #|  while { let tmp: Int = 10; i < tmp } do {
+    #|    let tmp$1: Int = 1;
+    #|    let tmp$2: Int = i + tmp$1;
+    #|    i = tmp$2;
+    #|  }
+    #|  i
+    #|}
+  inspect(knf_func, content=expected)
+}
+
+///|
+test "For Stmt Knf Convert" {
+  let code =
+    #|fn foo() -> Int {
+    #|  let mut sum = 0
+    #|  for i = 0; i < 10; i += 1 {
+    #|    sum += i
+    #|  }
+    #|  sum
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()
+  let f = ctx.top_functions.get("foo").unwrap()
+  let knf_func = ctx.top_function_to_knf(f)
+  println(knf_func)
+  let expected =
+    #|fn foo() -> Int {
+    #|  let mut sum: Int = 0;
+    #|  let mut i: Int = 0;
+    #|  while { let tmp: Int = 10; i < tmp } do {
+    #|    let tmp$1: Int = sum;
+    #|    let tmp$2: Int = i;
+    #|    let tmp$3: Int = tmp$1 + tmp$2;
+    #|    sum = tmp$3;
+    #|    let tmp$4: Int = 1;
+    #|    let tmp$5: Int = i + tmp$4;
+    #|    i = tmp$5;
+    #|  }
+    #|  sum
+    #|}
+  inspect(knf_func, content=expected)
+}

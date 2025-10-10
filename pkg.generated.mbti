@@ -307,7 +307,7 @@ pub(all) struct KnfBlock {
   stmts : Array[KnfStmt]
   final_expr : KnfExpr
 }
-fn KnfBlock::nesed_stringify(Self) -> String
+fn KnfBlock::nested_stringify(Self) -> String
 fn KnfBlock::stringify(Self, ident~ : Int) -> String
 
 pub(all) enum KnfExpr {

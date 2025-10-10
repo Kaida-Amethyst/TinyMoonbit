@@ -144,26 +144,30 @@ pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
     sb.write_string(stmt.stringify(ident~))
     sb.write_string("\n")
   }
-  sb.write_string(" ".repeat(ident))
-  sb.write_string(self.final_expr.stringify())
-  sb.write_string("\n")
+  if !(self.final_expr is Unit) {
+    sb.write_string(indent_str)
+    sb.write_string(self.final_expr.stringify(ident~))
+    sb.write_string("\n")
+  }
   sb.write_string(" ".repeat(ident - 2))
   sb.write_string("}")
   sb.to_string()
 }
 
 ///|
-pub fn KnfBlock::nesed_stringify(self : KnfBlock) -> String {
+pub fn KnfBlock::nested_stringify(self : KnfBlock) -> String {
   let sb = StringBuilder::new()
   sb.write_string("{")
-  let indent_str = "  "
+  let indent_str = " "
   for stmt in self.stmts {
     sb.write_string(indent_str)
     sb.write_string(stmt.stringify(ident=0))
-    sb.write_string("; ")
   }
-  sb.write_string(self.final_expr.stringify())
-  sb.write_string("")
+  if !(self.final_expr is Unit) {
+    sb.write_string(indent_str)
+    sb.write_string(self.final_expr.stringify())
+    sb.write_string(indent_str)
+  }
   sb.write_string("}")
   sb.to_string()
 }
@@ -603,11 +607,43 @@ pub fn Context::left_value_to_knf(
 }
 
 ///|
+///
+/// Convert While Stmt to KnfStmt
+///
+/// ```mbt
+/// let code =
+///   #|fn foo() -> Int {
+///   #|  let mut i = 0
+///   #|  while i < 10 {
+///   #|    i += 1
+///   #|  }
+///   #|  i
+///   #|}
+/// let ctx = Context::new(code)
+/// ctx..tokenize()..parse()..typecheck()
+/// let f = ctx.top_functions.get("foo").unwrap()
+/// let knf_func = ctx.top_function_to_knf(f)
+/// let expected =
+///   #|fn foo() -> Int {
+///   #|  let mut i: Int = 0;
+///   #|  while { let tmp: Int = 10; i < tmp } do {
+///   #|    let tmp$1: Int = 1;
+///   #|    let tmp$2: Int = i + tmp$1;
+///   #|    i = tmp$2;
+///   #|  }
+///   #|  i
+///   #|}
+/// inspect(knf_func, content=expected)
+/// ```
 pub fn Context::while_stmt_to_knf(
   self : Self,
   while_stmt : WhileStmt,
 ) -> Array[KnfStmt] {
-  ...
+  let { cond, body, .. } = while_stmt
+  let (cond_stmts, cond_knf) = self.expr_to_knf(cond)
+  let cond_block = KnfBlock::{ stmts: cond_stmts, final_expr: cond_knf }
+  let body_block = self.block_to_knf(body)
+  [KnfStmt::While(cond_block, body_block)]
 }
 
 ///|
@@ -637,7 +673,7 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident? : Int = 0) -> String {
       )
     KnfStmt::While(cond, body) => {
       if cond.stmts.length() < 2 {
-        sb.write_string("while \{cond.nesed_stringify()} do ")
+        sb.write_string("while \{cond.nested_stringify()} do ")
       } else {
         let cond_str = cond.stringify(ident=ident + 2)
         sb.write_string("while \{cond_str} do ")
