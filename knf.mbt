@@ -174,7 +174,6 @@ pub(all) enum KnfStmt {
   Assign(Name, Name)
   ArrayPut(Name, Name, KnfExpr)
   StructSet(Name, String, KnfExpr)
-  If(KnfExpr, KnfBlock, KnfBlock)
   While(KnfBlock, KnfBlock)
   ExprStmt(KnfExpr)
   Return(KnfExpr)
@@ -625,14 +624,14 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
       )
     KnfStmt::StructSet(struct_name, field_name, expr) =>
       sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
-    KnfStmt::If(cond, then_block, else_block) => {
-      sb.write_string("if \{cond.stringify()} ")
-      sb.write_string(then_block.stringify(ident=ident + 2))
-      if else_block.stmts.length() > 0 {
-        sb.write_string(" else ")
-        sb.write_string(else_block.stringify(ident=ident + 2))
-      }
-    }
+    //KnfStmt::If(cond, then_block, else_block) => {
+    //  sb.write_string("if \{cond.stringify()} ")
+    //  sb.write_string(then_block.stringify(ident=ident + 2))
+    //  if else_block.stmts.length() > 0 {
+    //    sb.write_string(" else ")
+    //    sb.write_string(else_block.stringify(ident=ident + 2))
+    //  }
+    //}
     KnfStmt::While(cond, body) => {
       if cond.stmts.length() < 2 {
         sb.write_string("while \{cond.nesed_stringify()} do ")
@@ -667,6 +666,7 @@ pub(all) enum KnfExpr {
   String(String)
   Ident(Name)
   Binary(BinaryOp, Name, Name)
+  If(KnfExpr, KnfBlock, KnfBlock)
   Not(Name)
   Neg(Name)
   Call(Name, Array[Name])
@@ -999,8 +999,8 @@ pub fn Context::if_expr_to_knf(
 }
 
 ///|
-pub fn KnfExpr::stringify(self : KnfExpr) -> String {
-  match self {
+pub fn KnfExpr::stringify(self : KnfExpr, ident~:Int = 0) -> String {
+  let s = match self {
     Unit => "()"
     Int(v) => v.to_string()
     UInt(v) => v.to_string()
@@ -1028,8 +1028,15 @@ pub fn KnfExpr::stringify(self : KnfExpr) -> String {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "(\{elements_str})"
     }
+    If(cond, then_block, else_block) => {
+      let cond_str = cond.stringify()
+      let then_str = then_block.stringify(ident=ident+2)
+      let else_str = else_block.stringify(ident=ident+2)
+      "if \{cond_str} then \{then_str} else \{else_str}"
+    }
     CreateStruct(struct_name) => "new \{struct_name}"
   }
+  " ".repeat(ident) + s
 }
 
 ///|
