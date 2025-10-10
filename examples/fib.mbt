@@ -1,4 +1,6 @@
 
+extern fn print_int(n: Int) -> Unit = "print_int";
+
 fn fib(n: Int) -> Int {
   if n <= 1 {
     return n;

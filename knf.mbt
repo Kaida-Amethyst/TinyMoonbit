@@ -40,18 +40,69 @@ pub impl Show for Name with output(self, logger) {
   logger.write_string("\{self.id}$\{self.slot}")
 }
 
-pub fn Context::knf_convert(self: Self) -> Unit {
+pub fn Context::knf_transform(self: Self) -> Unit {
   // 1. collect all top let
+  for top_name, top_let in self.top_lets{
+    self.name_env.set(top_name, Name::{ id: top_name, slot: 0 })
+    let _ = self.top_let_to_knf(top_let)
+  }
   // 2. collect all extern func
+  for ext_name, ext_func in self.extern_functions {
+    self.name_env.set(ext_name, Name::{ id: ext_name, slot: 0 })
+    let _ = self.top_extern_func_to_knf(ext_func)
+  }
   // 3. collect all struct def and enum def TODO
   // 4. convert all top function to knf function
+  // Note: need add functions name first
+  for fname, _ in self.top_functions {
+    self.name_env.set(fname, Name::{ id: fname, slot: 0 })
+  }
+  for _, func in self.top_functions {
+    let _ = self.top_function_to_knf(func)
+  }
 }
 
 ///|
 pub(all) struct KnfTopLet {
   name : Name
   ty : TypeKind
+  is_mut: Bool
   expr : KnfExpr
+}
+
+pub fn Context::top_let_to_knf(self: Self, let_stmt: TopLet) -> KnfTopLet {
+  let { name, is_mut, ty, expr, ..} = let_stmt
+  guard expr.kind is ApplyExpr(apply_expr) &&
+        apply_expr.kind is AtomExpr(atom_expr) else {
+    println("Compiler ICE: Top let expression Cannot support complex expression currently.")
+    panic()
+  }
+  let knf_expr = match atom_expr.kind {
+    Int(i) => KnfExpr::Int(i)
+    UInt(u) => KnfExpr::UInt(u)
+    Int64(i) => KnfExpr::Int64(i)
+    UInt64(u) => KnfExpr::UInt64(u)
+    Float(f) => KnfExpr::Float(f)
+    Double(d) => KnfExpr::Double(d)
+    Bool(b) => KnfExpr::Bool(b)
+    String(s) => KnfExpr::String(s)
+    _ => {
+      println("Compiler ICE: Top let expression Cannot support complex expression currently.")
+      panic()
+    }
+  }
+  let top_let_name = self.new_name(name)
+  let knf_top_let = KnfTopLet::{ name: top_let_name, ty: ty.kind, is_mut, expr: knf_expr }
+  self.knf_top_lets.set(name, knf_top_let)
+  knf_top_let
+}
+
+pub impl Show for KnfTopLet with output(self, logger) {
+  logger.write_string("let ")
+  if self.is_mut {
+    logger.write_string("mut ")
+  }
+  logger.write_string("\{self.name}: \{self.ty} = \{self.expr.stringify()};")
 }
 
 ///|
@@ -65,6 +116,22 @@ pub(all) struct KnfExternFunc {
   name : String
   ty : TypeKind
   params : Array[TypeKind]
+}
+
+pub impl Show for KnfExternFunc with output(self, logger) {
+  let params_str = self.params.map(t => t.to_string()).join(", ")
+  logger.write_string("extern fn \{self.name}(\{params_str}) -> \{self.ty};")
+}
+
+pub fn Context::top_extern_func_to_knf(
+  self : Self,
+  func : ExternFunction,
+) -> KnfExternFunc {
+  let params : Array[TypeKind] = func.params.map(param => param.ty.kind)
+  let ty = func.ret_ty.kind
+  let knf_ext = KnfExternFunc::{ name: func.fname, ty, params }
+  self.knf_ext_funcs.set(func.fname, knf_ext)
+  knf_ext
 }
 
 ///|
@@ -91,7 +158,9 @@ pub fn Context::top_function_to_knf(
   let ty = func.ret_ty.kind
   let body = self.block_to_knf(func.body)
   self.pop_name_env()
-  KnfFunction::{ name: func.fname, ty, params, body }
+  let knf_func = KnfFunction::{ name: func.fname, ty, params, body }
+  self.knf_top_funcs.set(func.fname, knf_func)
+  knf_func
 }
 
 ///|
@@ -1183,8 +1252,12 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
     If(cond, then_block, else_block) => {
       let cond_str = cond.stringify()
       let then_str = then_block.stringify(ident=ident + 2)
-      let else_str = else_block.stringify(ident=ident + 2)
-      "if \{cond_str} \{then_str} else \{else_str}"
+      if else_block.stmts.is_empty() && else_block.final_expr is Unit {
+        "if \{cond_str} \{then_str}"
+      } else {
+        let else_str = else_block.stringify(ident=ident + 2)
+        "if \{cond_str} \{then_str} else \{else_str}"
+      }
     }
     CreateStruct(struct_name) => "new \{struct_name}"
   }

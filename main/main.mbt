@@ -106,6 +106,7 @@ fn main {
     #|  -h, --help            Show this help message
     #|  -f, --file <file>     Specify the input TinyMoonbit source file (Must provide)
     #|  -stop-after=parse     Stop after parsing
+    #|  -stop-after=knf       Stop after Knf transformation
   let args = @env.args()
   if args.contains("-h") || args.contains("--help") {
     println(help_info)
@@ -157,9 +158,19 @@ fn main {
     return
   }
 
+  ctx.typecheck() catch {
+    err => {
+      println("Type checking error: \{err}")
+      return
+    }
+  }
+
+  ctx.knf_transform()
+
+  if args.contains("-stop-after=knf") {
+    ctx.print_knf()
+  }
+
   // dummy
-  println(ctx.top_lets)
-  println(ctx.extern_functions)
-  println(ctx.top_functions)
-  println(ctx.struct_defs)
+  ctx.print_knf()
 }

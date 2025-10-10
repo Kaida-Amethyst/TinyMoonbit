@@ -50,6 +50,23 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
   }
 }
 
+pub fn Context::print_knf(self: Self) -> Unit {
+  for top_let in self.knf_top_lets.values() {
+    println(top_let)
+    println("")
+  }
+
+  for ext_func in self.knf_ext_funcs.values() {
+    println(ext_func)
+    println("")
+  }
+
+  for top_func in self.knf_top_funcs.values() {
+    println(top_func)
+    println("")
+  }
+}
+
 ///|
 ///
 /// TODO: rename to `push_type_env`
