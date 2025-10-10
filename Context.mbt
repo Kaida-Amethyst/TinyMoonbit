@@ -26,7 +26,11 @@ pub struct Context {
   // knf_enum_defs: Map[String, KnfEnumDef]
 
   // codegen phase
+  llvm_ctx: @IR.Context
+  llvm_mod: @IR.Module
+  builder: @IR.IRBuilder
   llvm_funcs: Map[String, @IR.Function]
+  llvm_global_values: Map[String, &@IR.GlobalValue]
 
   //
   source_file : String
@@ -34,6 +38,9 @@ pub struct Context {
 
 ///|
 pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
+  let llvm_ctx = @IR.Context::new()
+  let llvm_mod = llvm_ctx.addModule(source_file)
+  let builder = llvm_ctx.createBuilder()
   Context::{
     code,
     tokens: Array::new(),
@@ -50,6 +57,10 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     knf_ext_funcs: Map::new(),
     knf_top_funcs: Map::new(),
     llvm_funcs: Map::new(),
+    llvm_global_values: Map::new(),
+    llvm_ctx,
+    llvm_mod,
+    builder,
     source_file,
   }
 }

@@ -2,7 +2,7 @@
 pub(all) struct Name {
   id : String
   slot : Int
-} derive(Hash)
+} derive(Hash, Eq)
 
 ///|
 pub fn Context::new_name(self : Self, n : String) -> Name {
@@ -140,6 +140,8 @@ pub(all) struct KnfFunction {
   ty : TypeKind
   params : Array[(Name, TypeKind)]
   body : KnfBlock
+  name_value_map: Map[Name, &@IR.Value]
+  name_type_map: Map[Name, TypeKind]
 }
 
 ///|
@@ -158,7 +160,7 @@ pub fn Context::top_function_to_knf(
   let ty = func.ret_ty.kind
   let body = self.block_to_knf(func.body)
   self.pop_name_env()
-  let knf_func = KnfFunction::{ name: func.fname, ty, params, body }
+  let knf_func = KnfFunction::{ name: func.fname, ty, params, body, name_value_map: Map::new(), name_type_map: Map::new() }
   self.knf_top_funcs.set(func.fname, knf_func)
   knf_func
 }
@@ -166,7 +168,7 @@ pub fn Context::top_function_to_knf(
 ///|
 pub fn KnfFunction::stringify(self : KnfFunction) -> String {
   let sb = StringBuilder::new()
-  let { name, ty, params, body } = self
+  let { name, ty, params, body, .. } = self
   sb.write_string("fn \{name}(")
   let params_str = params
     .map(pair => {
