@@ -76,8 +76,11 @@ pub fn Context::codegen_knf_func(
     Unit => ()
     e => {
       let ret_val = self.codegen_knf_expr(e, name_value_map, name_type_map)
-      let _ = builder.createRet(ret_val)
+      println(ret_val)
+      if !(ret_val.getType().asTypeEnum() is VoidType(_)) {
+        let _ = builder.createRet(ret_val)
 
+      }
     }
   }
   if top_fn.name is "main" {

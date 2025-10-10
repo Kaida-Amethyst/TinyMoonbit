@@ -1,4 +1,6 @@
 
+extern fn print_int(i: Int) -> Unit = "print_int"
+
 fn foo(a: Int, b: Int, c: Int, d: Int) -> Int {
   let t = a + b
   let k = c * d
@@ -13,5 +15,6 @@ fn foo(a: Int, b: Int, c: Int, d: Int) -> Int {
 }
 
 fn main {
-  let _ = foo(10, 20, 5, 3)
+  let r = foo(10, 20, 5, 3)
+  print_int(r)
 }
