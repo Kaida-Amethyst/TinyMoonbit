@@ -270,19 +270,16 @@ test "For Stmt Knf Convert" {
   ctx..tokenize()..parse()..typecheck()
   let f = ctx.top_functions.get("foo").unwrap()
   let knf_func = ctx.top_function_to_knf(f)
-  println(knf_func)
   let expected =
     #|fn foo() -> Int {
     #|  let mut sum: Int = 0;
     #|  let mut i: Int = 0;
     #|  while { let tmp: Int = 10; i < tmp } do {
-    #|    let tmp$1: Int = sum;
-    #|    let tmp$2: Int = i;
-    #|    let tmp$3: Int = tmp$1 + tmp$2;
-    #|    sum = tmp$3;
-    #|    let tmp$4: Int = 1;
-    #|    let tmp$5: Int = i + tmp$4;
-    #|    i = tmp$5;
+    #|    let tmp$1: Int = sum + i;
+    #|    sum = tmp$1;
+    #|    let tmp$2: Int = 1;
+    #|    let tmp$3: Int = i + tmp$2;
+    #|    i = tmp$3;
     #|  }
     #|  sum
     #|}

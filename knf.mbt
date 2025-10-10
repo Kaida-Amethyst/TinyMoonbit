@@ -647,11 +647,77 @@ pub fn Context::while_stmt_to_knf(
 }
 
 ///|
+///
+/// Note - Completely AI generated.
 pub fn Context::for_stmt_to_knf(
   self : Self,
   for_stmt : ForStmt,
 ) -> Array[KnfStmt] {
-  ...
+  let result_stmts : Array[KnfStmt] = Array::new()
+
+  // Process init statements - convert to let mut declarations
+  for init in for_stmt.inits {
+    let (var_name, init_expr) = init
+    let name = self.new_name(var_name)
+    let (expr_stmts, expr_knf) = self.expr_to_knf(init_expr)
+    result_stmts.append(expr_stmts)
+    guard init_expr.ty is Some(ty) else {
+      println(
+        "Compiler ICE: Init expression must have been inferred type in Type Checking phase.",
+      )
+      panic()
+    }
+    result_stmts.push(KnfStmt::LetMut(name, ty, expr_knf))
+  }
+
+  // Build condition block
+  let cond_block = match for_stmt.cond {
+    Some(cond_expr) => {
+      let (cond_stmts, cond_knf) = self.expr_to_knf(cond_expr)
+      KnfBlock::{ stmts: cond_stmts, final_expr: cond_knf }
+    }
+    None =>
+      // If no condition, use true
+      KnfBlock::{ stmts: Array::new(), final_expr: KnfExpr::Bool(true) }
+  }
+
+  // Build body block with original body + step statements
+  let body_stmts : Array[KnfStmt] = Array::new()
+
+  // Add original body statements
+  let original_body_block = self.block_to_knf(for_stmt.body)
+  body_stmts.append(original_body_block.stmts)
+  if !(original_body_block.final_expr is Unit) {
+    body_stmts.push(KnfStmt::ExprStmt(original_body_block.final_expr))
+  }
+
+  // Add step statements
+  for step in for_stmt.steps {
+    let (var_name, assign_op, step_expr) = step
+    let assign_stmt = AssignStmt::{
+      lineno: 0,
+      column: 0,
+      end_lineno: 0,
+      end_column: 0,
+      left_value: LeftValue::{
+        lineno: 0,
+        column: 0,
+        end_lineno: 0,
+        end_column: 0,
+        kind: LeftValueKind::Ident(var_name),
+        ty: None,
+      },
+      op: assign_op,
+      expr: step_expr,
+    }
+    let step_stmts = self.assign_stmt_to_knf(assign_stmt)
+    body_stmts.append(step_stmts)
+  }
+  let body_block = KnfBlock::{ stmts: body_stmts, final_expr: KnfExpr::Unit }
+
+  // Create while statement
+  result_stmts.push(KnfStmt::While(cond_block, body_block))
+  result_stmts
 }
 
 ///|
@@ -834,6 +900,9 @@ pub fn Context::field_access_to_knf(
   struct_expr : ApplyExpr,
   field_name : String,
 ) -> (Array[KnfStmt], KnfExpr) {
+  ignore(self)
+  ignore(struct_expr)
+  ignore(field_name)
   ...
 }
 

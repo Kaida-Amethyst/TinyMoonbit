@@ -315,6 +315,7 @@ pub fn Context::type_check_field_access_expr(
   obj : ApplyExpr,
   field : String,
 ) -> TypeKind raise TypeCheckError {
+  ignore(self)
   ignore(obj)
   ignore(field)
   ...
