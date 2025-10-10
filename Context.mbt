@@ -18,7 +18,7 @@ pub struct Context {
   mut current_func : TopFunction?
 
   // Knf Phase
-  mut name_env: Env[String, Name]
+  mut name_env : Env[String, Name]
 
   //
   source_file : String
@@ -68,10 +68,12 @@ pub fn Context::get_ident_type(self : Self, k : String) -> TypeKind? {
   self.type_env.get(k)
 }
 
+///|
 pub fn Context::push_name_env(self : Self) -> Unit {
   self.name_env = self.name_env.sub_env()
 }
 
+///|
 pub fn Context::pop_name_env(self : Self) -> Unit {
   self.name_env = self.name_env.parent.unwrap()
 }

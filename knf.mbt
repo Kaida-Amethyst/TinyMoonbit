@@ -4,22 +4,24 @@ pub struct Name {
   slot : Int
 }
 
-pub fn Context::new_name(self: Self, n: String) -> Name {
+///|
+pub fn Context::new_name(self : Self, n : String) -> Name {
   match self.name_env.get(n) {
     Some({ id, slot }) => {
-      let name = Name::{id: id, slot: slot + 1}
+      let name = Name::{ id, slot: slot + 1 }
       self.name_env.set(n, name)
       name
     }
     None => {
-      let name = Name::{id: n, slot: 0}
+      let name = Name::{ id: n, slot: 0 }
       self.name_env.set(n, name)
       name
     }
   }
 }
 
-pub fn Context::get_knf_name(self: Self, n: String) -> Name {
+///|
+pub fn Context::get_knf_name(self : Self, n : String) -> Name {
   match self.name_env.get(n) {
     Some(name) => name
     None => {
@@ -29,6 +31,7 @@ pub fn Context::get_knf_name(self: Self, n: String) -> Name {
   }
 }
 
+///|
 pub impl Show for Name with output(self, logger) {
   if self.slot == 0 {
     logger.write_string(self.id)
@@ -37,15 +40,17 @@ pub impl Show for Name with output(self, logger) {
   logger.write_string("\{self.id}.\{self.slot}")
 }
 
+///|
 pub(all) struct KnfTopLet {
-  name: Name
-  ty: TypeKind
-  expr: KnfExpr
+  name : Name
+  ty : TypeKind
+  expr : KnfExpr
 }
 
+///|
 pub(all) struct KnfStructDef {
-  name: String
-  fields: Array[(String, TypeKind)]
+  name : String
+  fields : Array[(String, TypeKind)]
 }
 
 ///|
@@ -56,32 +61,36 @@ pub(all) struct KnfFunction {
   body : KnfBlock
 }
 
-pub fn Context::top_function_to_knf(self: Self, func: TopFunction) -> KnfFunction {
+///|
+pub fn Context::top_function_to_knf(
+  self : Self,
+  func : TopFunction,
+) -> KnfFunction {
   self.push_name_env()
   // Convert parameters
-  let params: Array[(Name, TypeKind)] = Array::new()
+  let params : Array[(Name, TypeKind)] = Array::new()
   for param in func.param_list {
-    let { name, ty, ..} = param
+    let { name, ty, .. } = param
     let name = self.new_name(name)
     params.push((name, ty.kind))
   }
-
   let ty = func.ret_ty.kind
   let body = self.block_to_knf(func.body)
   self.pop_name_env()
-  KnfFunction::{name: func.fname, ty, params, body}
+  KnfFunction::{ name: func.fname, ty, params, body }
 }
 
-pub fn KnfFunction::stringify(self: KnfFunction) -> String {
+///|
+pub fn KnfFunction::stringify(self : KnfFunction) -> String {
   let sb = StringBuilder::new()
-  let {name, ty, params, body} = self
+  let { name, ty, params, body } = self
   sb.write_string("fn \{name} (")
-  let params_str = params.map(
-    pair => {
+  let params_str = params
+    .map(pair => {
       let (n, t) = pair
       "\{n.id}: \{t}"
-    }
-  ).join(", ")
+    })
+    .join(", ")
   sb.write_string(params_str)
   sb.write_string(") -> \{ty} ")
   sb.write_string(body.stringify(ident=2))
@@ -94,8 +103,9 @@ pub(all) struct KnfBlock {
   final_expr : KnfExpr
 }
 
-pub fn Context::block_to_knf(self: Self, block: BlockExpr) -> KnfBlock {
-  let stmts: Array[KnfStmt] = Array::new()
+///|
+pub fn Context::block_to_knf(self : Self, block : BlockExpr) -> KnfBlock {
+  let stmts : Array[KnfStmt] = Array::new()
   for stmt in block.stmts {
     let knf_stmt = self.stmt_to_knf(stmt)
     stmts.append(knf_stmt)
@@ -104,7 +114,8 @@ pub fn Context::block_to_knf(self: Self, block: BlockExpr) -> KnfBlock {
   KnfBlock::{ stmts, final_expr }
 }
 
-pub fn KnfBlock::stringify(self: KnfBlock, ident~: Int) -> String {
+///|
+pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
   let sb = StringBuilder::new()
   sb.write_string("{\n")
   let indent_str = " ".repeat(ident)
@@ -132,18 +143,21 @@ pub(all) enum KnfStmt {
   ReturnVoid
 }
 
-pub fn Context::stmt_to_knf(self: Self, stmt: Stmt) -> Array[KnfStmt] {
+///|
+pub fn Context::stmt_to_knf(self : Self, stmt : Stmt) -> Array[KnfStmt] {
   match stmt.kind {
     LetStmt(let_stmt) => self.let_stmt_to_knf(let_stmt)
-    LetMutStmt({name, ty, expr, ..}) => {
+    LetMutStmt({ name, ty, expr, .. }) => {
       let name = self.new_name(name)
       let (stmts, expr) = self.expr_to_knf(expr)
       guard ty is Some(ty) else {
-        println("Compiler ICE: Let Mut Stmt must have been inferred type in Type Checking phase.")
+        println(
+          "Compiler ICE: Let Mut Stmt must have been inferred type in Type Checking phase.",
+        )
         panic()
       }
       [..stmts, KnfStmt::LetMut(name, ty.kind, expr)]
-    } 
+    }
     AssignStmt(assign_stmt) => self.assign_stmt_to_knf(assign_stmt)
     WhileStmt(while_stmt) => self.while_stmt_to_knf(while_stmt)
     ForStmt(for_stmt) => self.for_stmt_to_knf(for_stmt)
@@ -159,26 +173,27 @@ pub fn Context::stmt_to_knf(self: Self, stmt: Stmt) -> Array[KnfStmt] {
   }
 }
 
-pub fn Context::let_stmt_to_knf(self: Self, let_stmt: LetStmt) -> Array[KnfStmt] {
-  let {pattern, ty, expr, ..} = let_stmt
+///|
+pub fn Context::let_stmt_to_knf(
+  self : Self,
+  let_stmt : LetStmt,
+) -> Array[KnfStmt] {
+  let { pattern, ty, expr, .. } = let_stmt
   let (stmts, expr) = self.expr_to_knf(expr)
   match (pattern.kind, ty, expr) {
-    (Wildcard, _, expr) => {
+    (Wildcard, _, expr) =>
       // let _ = expr;
       [..stmts, KnfStmt::ExprStmt(expr)]
-    }
     (Ident(name), Some(ty), expr) => {
       let name = self.new_name(name)
       [..stmts, KnfStmt::Let(name, ty.kind, expr)]
     }
-    (Tuple(pats), ty, TupleLiteral(tup)) => {
-      ...
-    }
-    (Tuple(pats), ty, expr) => {
-      ...
-    }
+    (Tuple(pats), ty, TupleLiteral(tup)) => ...
+    (Tuple(pats), ty, expr) => ...
     _ => {
-      println("Compiler ICE: Unsupported pattern in let statement in KNF phase.")
+      println(
+        "Compiler ICE: Unsupported pattern in let statement in KNF phase.",
+      )
       panic()
     }
   }
@@ -201,39 +216,50 @@ pub fn Context::let_stmt_to_knf(self: Self, let_stmt: LetStmt) -> Array[KnfStmt]
 //  kind : LeftValueKind
 //} derive(Show, Eq)
 //
-/////|
+
+///|
 //pub enum LeftValueKind {
 //  Ident(String)
 //  ArrayAccess(LeftValue, Expr)
 //  FieldAccess(LeftValue, String)
 //} derive(Show, Eq)
-pub fn Context::assign_stmt_to_knf(self: Self, assign_stmt: AssignStmt) -> Array[KnfStmt] {
-  ... 
-}
-
-pub fn Context::while_stmt_to_knf(self: Self, while_stmt: WhileStmt) -> Array[KnfStmt] {
+pub fn Context::assign_stmt_to_knf(
+  self : Self,
+  assign_stmt : AssignStmt,
+) -> Array[KnfStmt] {
   ...
 }
 
-pub fn Context::for_stmt_to_knf(self: Self, for_stmt: ForStmt) -> Array[KnfStmt] {
+///|
+pub fn Context::while_stmt_to_knf(
+  self : Self,
+  while_stmt : WhileStmt,
+) -> Array[KnfStmt] {
   ...
 }
 
-pub fn KnfStmt::stringify(self: KnfStmt, ident~: Int) -> String {
+///|
+pub fn Context::for_stmt_to_knf(
+  self : Self,
+  for_stmt : ForStmt,
+) -> Array[KnfStmt] {
+  ...
+}
+
+///|
+pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
   let sb = StringBuilder::new()
   match self {
-    KnfStmt::Let(name, ty, expr) => {
+    KnfStmt::Let(name, ty, expr) =>
       sb.write_string("let \{name}: \{ty} = \{expr.stringify()};")
-    }
-    KnfStmt::LetMut(name, ty, expr) => {
+    KnfStmt::LetMut(name, ty, expr) =>
       sb.write_string("let mut \{name}: \{ty} = \{expr.stringify()};")
-    }
-    KnfStmt::Assign(name, expr) => {
+    KnfStmt::Assign(name, expr) =>
       sb.write_string("\{name.id} = \{expr.stringify()};")
-    }
-    KnfStmt::ArrayPut(array_name, index_name, expr) => {
-      sb.write_string("\{array_name.id}[\{index_name.id}] = \{expr.stringify()};")
-    }
+    KnfStmt::ArrayPut(array_name, index_name, expr) =>
+      sb.write_string(
+        "\{array_name.id}[\{index_name.id}] = \{expr.stringify()};",
+      )
     //KnfStmt::StructPut(struct_name, field_name, expr) => {
     //  sb.write_string("\{struct_name.id}.\{field_name} = \{expr.stringify()};")
     //}
@@ -249,18 +275,11 @@ pub fn KnfStmt::stringify(self: KnfStmt, ident~: Int) -> String {
       sb.write_string("while \{cond.stringify()} ")
       sb.write_string(body.stringify(ident=ident + 2))
     }
-    KnfStmt::ExprStmt(expr) => {
-      sb.write_string("\{expr.stringify()};")
-    }
-    KnfStmt::Return(expr) => {
-      sb.write_string("return \{expr.stringify()};")
-    }
-    KnfStmt::ReturnVoid => {
-      sb.write_string("return;")
-    }
-    KnfStmt::StructSet(struct_name, field_name, expr) => {
+    KnfStmt::ExprStmt(expr) => sb.write_string("\{expr.stringify()};")
+    KnfStmt::Return(expr) => sb.write_string("return \{expr.stringify()};")
+    KnfStmt::ReturnVoid => sb.write_string("return;")
+    KnfStmt::StructSet(struct_name, field_name, expr) =>
       sb.write_string("\{struct_name}.\{field_name} = \{expr.stringify()};")
-    }
   }
   sb.to_string()
 }
@@ -289,16 +308,22 @@ pub(all) enum KnfExpr {
   TupleLiteral(Array[Name])
 }
 
-pub fn Context::expr_to_knf(self: Self, expr: Expr) -> (Array[KnfStmt], KnfExpr) {
+///|
+pub fn Context::expr_to_knf(
+  self : Self,
+  expr : Expr,
+) -> (Array[KnfStmt], KnfExpr) {
   match expr.kind {
     ApplyExpr(apply_expr) => self.apply_expr_to_knf(apply_expr)
     BlockExpr(block_expr) => {
-      let {stmts, final_expr } = self.block_to_knf(block_expr)
+      let { stmts, final_expr } = self.block_to_knf(block_expr)
       (stmts, final_expr)
     }
     BinaryExpr(op, lhs, rhs) => {
       guard expr.ty is Some(ty) else {
-        println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
         panic()
       }
       self.binary_expr_to_knf(op, lhs, rhs, ty)
@@ -307,11 +332,18 @@ pub fn Context::expr_to_knf(self: Self, expr: Expr) -> (Array[KnfStmt], KnfExpr)
   }
 }
 
-pub fn Context::binary_expr_to_knf(self: Self, op: BinaryOp, lhs: Expr, rhs: Expr, ty: TypeKind) -> (Array[KnfStmt], KnfExpr) {
+///|
+pub fn Context::binary_expr_to_knf(
+  self : Self,
+  op : BinaryOp,
+  lhs : Expr,
+  rhs : Expr,
+  ty : TypeKind,
+) -> (Array[KnfStmt], KnfExpr) {
   let (lhs_stmts, lhs_knf_expr) = self.expr_to_knf(lhs)
   let (rhs_stmts, rhs_knf_expr) = self.expr_to_knf(rhs)
   let stmts = Array::new()
-  stmts..append(lhs_stmts) ..append(rhs_stmts)
+  stmts..append(lhs_stmts)..append(rhs_stmts)
   let lhs_name = match lhs_knf_expr {
     Ident(name) => name
     _ => {
@@ -341,7 +373,8 @@ pub fn Context::binary_expr_to_knf(self: Self, op: BinaryOp, lhs: Expr, rhs: Exp
 //  kind : ApplyExprKind
 //} derive(Show, Eq)
 //
-/////|
+
+///|
 //pub enum ApplyExprKind {
 //  AtomExpr(AtomExpr)
 //  ArrayAccess(ApplyExpr, Expr)
@@ -349,37 +382,63 @@ pub fn Context::binary_expr_to_knf(self: Self, op: BinaryOp, lhs: Expr, rhs: Exp
 //  TupleAccess(ApplyExpr, Int)
 //  Call(ApplyExpr, Array[Expr])
 //} derive(Show, Eq)
-pub fn Context::apply_expr_to_knf(self: Self, apply_expr: ApplyExpr) -> (Array[KnfStmt], KnfExpr) {
+pub fn Context::apply_expr_to_knf(
+  self : Self,
+  apply_expr : ApplyExpr,
+) -> (Array[KnfStmt], KnfExpr) {
   match apply_expr.kind {
     AtomExpr(atom_expr) => self.atom_expr_to_knf(atom_expr)
-    ArrayAccess(array_expr, index_expr) => self.array_access_to_knf(array_expr, index_expr)
-    FieldAccess(struct_expr, field_name) => self.field_access_to_knf(struct_expr, field_name)
+    ArrayAccess(array_expr, index_expr) =>
+      self.array_access_to_knf(array_expr, index_expr)
+    FieldAccess(struct_expr, field_name) =>
+      self.field_access_to_knf(struct_expr, field_name)
     TupleAccess(tuple_expr, idx) => self.tuple_access_to_knf(tuple_expr, idx)
     Call(func_expr, arg_exprs) => self.call_expr_to_knf(func_expr, arg_exprs)
   }
 }
 
-pub fn Context::array_access_to_knf(self: Self, array_expr: ApplyExpr, index_expr: Expr) -> (Array[KnfStmt], KnfExpr) {
-  ...
-}
-
-pub fn Context::field_access_to_knf(self: Self, struct_expr: ApplyExpr, field_name: String) -> (Array[KnfStmt], KnfExpr) {
-  ...
-}
-
-pub fn Context::tuple_access_to_knf(self: Self, tuple_expr: ApplyExpr, idx: Int) -> (Array[KnfStmt], KnfExpr) {
-  ...
-}
-
-pub fn Context::call_expr_to_knf(self: Self, func_expr: ApplyExpr, arg_exprs: Array[Expr]) -> (Array[KnfStmt], KnfExpr) {
-  ...
-}
-
-pub fn Context::atom_expr_to_knf(
-  self: Self,
-  atom_expr: AtomExpr
+///|
+pub fn Context::array_access_to_knf(
+  self : Self,
+  array_expr : ApplyExpr,
+  index_expr : Expr,
 ) -> (Array[KnfStmt], KnfExpr) {
-  let stmts: Array[KnfStmt] = Array::new()
+  ...
+}
+
+///|
+pub fn Context::field_access_to_knf(
+  self : Self,
+  struct_expr : ApplyExpr,
+  field_name : String,
+) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+///|
+pub fn Context::tuple_access_to_knf(
+  self : Self,
+  tuple_expr : ApplyExpr,
+  idx : Int,
+) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+///|
+pub fn Context::call_expr_to_knf(
+  self : Self,
+  func_expr : ApplyExpr,
+  arg_exprs : Array[Expr],
+) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+///|
+pub fn Context::atom_expr_to_knf(
+  self : Self,
+  atom_expr : AtomExpr,
+) -> (Array[KnfStmt], KnfExpr) {
+  let stmts : Array[KnfStmt] = Array::new()
   let e = match atom_expr.kind {
     Unit => KnfExpr::Unit
     Int(v) => Int(v)
@@ -417,9 +476,13 @@ pub fn Context::atom_expr_to_knf(
   (stmts, e)
 }
 
-pub fn Context::multiple_exprs_to_knf(self: Self, exprs: Array[Expr]) -> (Array[KnfStmt], Array[Name]) {
-  let stmts: Array[KnfStmt] = Array::new()
-  let names: Array[Name] = Array::new()
+///|
+pub fn Context::multiple_exprs_to_knf(
+  self : Self,
+  exprs : Array[Expr],
+) -> (Array[KnfStmt], Array[Name]) {
+  let stmts : Array[KnfStmt] = Array::new()
+  let names : Array[Name] = Array::new()
   for expr in exprs {
     let (expr_stmts, expr_knf) = self.expr_to_knf(expr)
     stmts.append(expr_stmts)
@@ -427,7 +490,9 @@ pub fn Context::multiple_exprs_to_knf(self: Self, exprs: Array[Expr]) -> (Array[
       Ident(name) => name
       _ => {
         guard expr.ty is Some(ty) else {
-          println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+          println(
+            "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+          )
           panic()
         }
         let name = self.new_name("tmp")
@@ -440,11 +505,16 @@ pub fn Context::multiple_exprs_to_knf(self: Self, exprs: Array[Expr]) -> (Array[
   (stmts, names)
 }
 
-pub fn Context::if_expr_to_knf(self: Self, if_expr: IfExpr) -> (Array[KnfStmt], KnfExpr) {
+///|
+pub fn Context::if_expr_to_knf(
+  self : Self,
+  if_expr : IfExpr,
+) -> (Array[KnfStmt], KnfExpr) {
   ...
 }
 
-pub fn KnfExpr::stringify(self: KnfExpr) -> String {
+///|
+pub fn KnfExpr::stringify(self : KnfExpr) -> String {
   match self {
     KnfExpr::Unit => "()"
     KnfExpr::Int(v) => v.to_string()
