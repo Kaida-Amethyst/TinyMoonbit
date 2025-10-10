@@ -2,6 +2,7 @@
 package "Kaida-Amethyst/TinyMoonBit"
 
 import(
+  "Kaida-Amethyst/MoonLLVM/IR"
   "Kaida-Amethyst/either"
 )
 
@@ -139,6 +140,14 @@ pub struct Context {
   mut type_env : Env[String, TypeKind]
   mut current_func : TopFunction?
   mut name_env : Env[String, Name]
+  knf_top_lets : Map[String, KnfTopLet]
+  knf_ext_funcs : Map[String, KnfExternFunc]
+  knf_top_funcs : Map[String, KnfFunction]
+  llvm_ctx : @IR.Context
+  llvm_mod : @IR.Module
+  builder : @IR.IRBuilder
+  llvm_funcs : Map[String, @IR.Function]
+  llvm_global_values : Map[String, &@IR.GlobalValue]
   source_file : String
 }
 fn Context::apply_expr_to_knf(Self, ApplyExpr) -> (Array[KnfStmt], KnfExpr)
@@ -151,6 +160,12 @@ fn Context::bind_pat_and_name_to_knf(Self, Pattern, TypeKind, Name) -> Array[Knf
 fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
 fn Context::block_to_knf(Self, BlockExpr) -> KnfBlock
 fn Context::call_expr_to_knf(Self, ApplyExpr, Array[Expr]) -> (Array[KnfStmt], KnfExpr)
+fn Context::codegen_knf_binary_expr(Self, BinaryOp, Name, Name, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
+fn Context::codegen_knf_expr(Self, KnfExpr, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
+fn Context::codegen_knf_ext_func(Self, KnfExternFunc) -> Unit raise
+fn Context::codegen_knf_func(Self, KnfFunction) -> Unit raise
+fn Context::codegen_knf_func_for_func_value(Self, KnfFunction) -> Unit raise
+fn Context::codegen_knf_stmt(Self, KnfStmt, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> Unit raise
 fn Context::expr_to_knf(Self, Expr) -> (Array[KnfStmt], KnfExpr)
 fn Context::field_access_to_knf(Self, ApplyExpr, String) -> (Array[KnfStmt], KnfExpr)
 fn Context::for_stmt_to_knf(Self, ForStmt) -> Array[KnfStmt]
@@ -158,8 +173,10 @@ fn Context::get_error_msg(Self, Token, String) -> String
 fn Context::get_ident_type(Self, String) -> TypeKind?
 fn Context::get_knf_name(Self, String) -> Name
 fn Context::if_expr_to_knf(Self, IfExpr) -> (Array[KnfStmt], KnfExpr)
+fn Context::knf_transform(Self) -> Unit
 fn Context::left_value_to_knf(Self, LeftValue) -> (Array[KnfStmt], Name)
 fn Context::let_stmt_to_knf(Self, LetStmt) -> Array[KnfStmt]
+fn Context::llvm_codegen(Self) -> @IR.Module raise
 fn Context::multiple_exprs_to_knf(Self, Array[Expr]) -> (Array[KnfStmt], Array[Name])
 fn Context::new(String, source_file? : String) -> Self
 fn Context::new_name(Self, String) -> Name
@@ -188,13 +205,16 @@ fn Context::parse_while_stmt(Self, ArrayView[Token]) -> (WhileStmt, ArrayView[To
 fn Context::pop_env(Self) -> Unit
 fn Context::pop_name_env(Self) -> Unit
 fn Context::print_error(Self, ParseError) -> Unit
+fn Context::print_knf(Self) -> Unit
 fn Context::push_env(Self) -> Unit
 fn Context::push_name_env(Self) -> Unit
 fn Context::set_env(Self, String, TypeKind) -> Unit
 fn Context::simple_let_tuple_to_knf(Self, Array[Pattern], Array[TypeKind], Array[Expr]) -> Array[KnfStmt]
 fn Context::stmt_to_knf(Self, Stmt) -> Array[KnfStmt]
 fn Context::tokenize(Self) -> Unit raise TokenizeError
+fn Context::top_extern_func_to_knf(Self, ExternFunction) -> KnfExternFunc
 fn Context::top_function_to_knf(Self, TopFunction) -> KnfFunction
+fn Context::top_let_to_knf(Self, TopLet) -> KnfTopLet
 fn Context::tuple_access_to_knf(Self, ApplyExpr, Int) -> (Array[KnfStmt], KnfExpr)
 fn Context::type_check_apply_expr(Self, ApplyExpr) -> TypeKind raise TypeCheckError
 fn Context::type_check_array_access_expr(Self, ApplyExpr, Expr) -> TypeKind raise TypeCheckError
@@ -340,12 +360,15 @@ pub(all) struct KnfExternFunc {
   ty : TypeKind
   params : Array[TypeKind]
 }
+impl Show for KnfExternFunc
 
 pub(all) struct KnfFunction {
   name : String
   ty : TypeKind
   params : Array[(Name, TypeKind)]
   body : KnfBlock
+  name_value_map : Map[Name, &@IR.Value]
+  name_type_map : Map[Name, TypeKind]
 }
 fn KnfFunction::stringify(Self) -> String
 impl Show for KnfFunction
@@ -372,8 +395,10 @@ pub(all) struct KnfStructDef {
 pub(all) struct KnfTopLet {
   name : Name
   ty : TypeKind
+  is_mut : Bool
   expr : KnfExpr
 }
+impl Show for KnfTopLet
 
 pub struct LeftValue {
   lineno : Int
@@ -422,6 +447,10 @@ pub(all) struct Name {
   id : String
   slot : Int
 }
+fn Name::is_wild_card(Self) -> Bool
+fn Name::new_wild_card() -> Self
+impl Eq for Name
+impl Hash for Name
 impl Show for Name
 
 pub struct Param {
@@ -555,6 +584,7 @@ pub struct TopLet {
   end_lineno : Int
   end_column : Int
   name : String
+  is_mut : Bool
   ty : Type
   expr : Expr
 }

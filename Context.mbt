@@ -19,18 +19,18 @@ pub struct Context {
 
   // Knf Phase
   mut name_env : Env[String, Name]
-  knf_top_lets: Map[String, KnfTopLet]
-  knf_ext_funcs: Map[String, KnfExternFunc]
-  knf_top_funcs: Map[String, KnfFunction]
+  knf_top_lets : Map[String, KnfTopLet]
+  knf_ext_funcs : Map[String, KnfExternFunc]
+  knf_top_funcs : Map[String, KnfFunction]
   // knf_struct_defs: Map[String, KnfStructDef]
   // knf_enum_defs: Map[String, KnfEnumDef]
 
   // codegen phase
-  llvm_ctx: @IR.Context
-  llvm_mod: @IR.Module
-  builder: @IR.IRBuilder
-  llvm_funcs: Map[String, @IR.Function]
-  llvm_global_values: Map[String, &@IR.GlobalValue]
+  llvm_ctx : @IR.Context
+  llvm_mod : @IR.Module
+  builder : @IR.IRBuilder
+  llvm_funcs : Map[String, @IR.Function]
+  llvm_global_values : Map[String, &@IR.GlobalValue]
 
   //
   source_file : String
@@ -65,17 +65,16 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
   }
 }
 
-pub fn Context::print_knf(self: Self) -> Unit {
+///|
+pub fn Context::print_knf(self : Self) -> Unit {
   for top_let in self.knf_top_lets.values() {
     println(top_let)
     println("")
   }
-
   for ext_func in self.knf_ext_funcs.values() {
     println(ext_func)
     println("")
   }
-
   for top_func in self.knf_top_funcs.values() {
     println(top_func)
     println("")

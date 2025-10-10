@@ -109,7 +109,7 @@ fn main {
     #|  -stop-after=knf       Stop after Knf transformation
   let args = @env.args()
   let legal_args = [
-    "-h", "--help", "-f", "--file", "-stop-after=parse", "-stop-after=knf"
+    "-h", "--help", "-f", "--file", "-stop-after=parse", "-stop-after=knf",
   ]
   for arg in args[1:] {
     if arg.has_prefix("-") && !legal_args.contains(arg) {
@@ -167,21 +167,17 @@ fn main {
     println(ctx.struct_defs)
     return
   }
-
   ctx.typecheck() catch {
     err => {
       println("Type checking error: \{err}")
       return
     }
   }
-
   ctx.knf_transform()
-
   if args.contains("-stop-after=knf") {
     ctx.print_knf()
     return
   }
-
   let mod = ctx.llvm_codegen() catch {
     err => {
       println("Code generation error: \{err}")

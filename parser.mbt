@@ -584,7 +584,7 @@ pub struct TopLet {
   end_lineno : Int
   end_column : Int
   name : String
-  is_mut: Bool
+  is_mut : Bool
   ty : Type
   expr : Expr
 } derive(Show, Eq)
@@ -620,7 +620,7 @@ pub fn Context::parse_top_let(
   guard tokens is [{ kind: Lower(name), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Expect a lower ident"))
   }
-  let (is_mut, tokens) = if tokens is [{kind: Keyword(Mut), ..}, ..tokens] {
+  let (is_mut, tokens) = if tokens is [{ kind: Keyword(Mut), .. }, .. tokens] {
     (true, tokens)
   } else {
     (false, tokens)

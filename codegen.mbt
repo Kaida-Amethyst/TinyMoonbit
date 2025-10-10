@@ -1,5 +1,5 @@
-
-pub fn Context::llvm_codegen(self: Self) -> @IR.Module raise {
+///|
+pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
   let { llvm_ctx, llvm_mod, .. } = self
 
   // codegen for external functions
@@ -16,11 +16,14 @@ pub fn Context::llvm_codegen(self: Self) -> @IR.Module raise {
   for _, top_fn in self.knf_top_funcs {
     self.codegen_knf_func(top_fn)
   }
-
   llvm_mod
 }
 
-pub fn Context::codegen_knf_ext_func(self: Self, ext_fn: KnfExternFunc) -> Unit raise {
+///|
+pub fn Context::codegen_knf_ext_func(
+  self : Self,
+  ext_fn : KnfExternFunc,
+) -> Unit raise {
   let { llvm_ctx, llvm_mod, .. } = self
   let argTys = ext_fn.params.map(p => codegen_for_type(p, llvm_ctx))
   let retTy = codegen_for_type(ext_fn.ty, llvm_ctx)
@@ -29,12 +32,16 @@ pub fn Context::codegen_knf_ext_func(self: Self, ext_fn: KnfExternFunc) -> Unit 
   self.llvm_funcs.set(ext_fn.name.to_string(), fval)
 }
 
-pub fn Context::codegen_knf_func_for_func_value(self: Self, top_fn: KnfFunction) -> Unit raise {
+///|
+pub fn Context::codegen_knf_func_for_func_value(
+  self : Self,
+  top_fn : KnfFunction,
+) -> Unit raise {
   let { llvm_ctx, llvm_mod, .. } = self
   let argTys = top_fn.params.map(p => {
-    let (_, p) = p;
-    codegen_for_type(p, llvm_ctx)}
-  )
+    let (_, p) = p
+    codegen_for_type(p, llvm_ctx)
+  })
   //let retTy = codegen_for_type(top_fn.ty, llvm_ctx)
   let retTy = if top_fn.name is "main" {
     (llvm_ctx.getInt32Ty() : &@IR.Type)
@@ -46,7 +53,11 @@ pub fn Context::codegen_knf_func_for_func_value(self: Self, top_fn: KnfFunction)
   self.llvm_funcs.set(top_fn.name.to_string(), fval)
 }
 
-pub fn Context::codegen_knf_func(self: Self, top_fn: KnfFunction) -> Unit raise {
+///|
+pub fn Context::codegen_knf_func(
+  self : Self,
+  top_fn : KnfFunction,
+) -> Unit raise {
   let { builder, .. } = self
   let fval = self.llvm_funcs.get(top_fn.name).unwrap()
   let { name_value_map, name_type_map, .. } = top_fn
@@ -66,18 +77,21 @@ pub fn Context::codegen_knf_func(self: Self, top_fn: KnfFunction) -> Unit raise 
     e => {
       let ret_val = self.codegen_knf_expr(e, name_value_map, name_type_map)
       let _ = builder.createRet(ret_val)
+
     }
   }
   if top_fn.name is "main" {
     let _ = builder.createRet(self.llvm_ctx.getConstInt32(0))
+
   }
 }
 
+///|
 pub fn Context::codegen_knf_stmt(
-  self: Self,
-  stmt: KnfStmt,
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind],
+  self : Self,
+  stmt : KnfStmt,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> Unit raise {
   match stmt {
     Let(name, ty, expr) => {
@@ -103,6 +117,7 @@ pub fn Context::codegen_knf_stmt(
       }
       let expr_val = name_value_map.get(right_name).unwrap()
       let _ = self.builder.createStore(expr_val, var_ptr)
+
     }
     ArrayPut(_) => {
       println("codegen for array put not implemented yet")
@@ -110,6 +125,7 @@ pub fn Context::codegen_knf_stmt(
     }
     ExprStmt(expr) => {
       let _ = self.codegen_knf_expr(expr, name_value_map, name_type_map)
+
     }
     While(_, _) => {
       println("codegen for while not implemented yet")
@@ -122,19 +138,21 @@ pub fn Context::codegen_knf_stmt(
     Return(expr) => {
       let ret_val = self.codegen_knf_expr(expr, name_value_map, name_type_map)
       let _ = self.builder.createRet(ret_val)
+
     }
     ReturnVoid => {
       let _ = self.builder.createRetVoid()
+
     }
-    
   }
 }
 
+///|
 pub fn Context::codegen_knf_expr(
-  self: Self,
-  expr: KnfExpr,
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind],
+  self : Self,
+  expr : KnfExpr,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
   match expr {
     Unit => {
@@ -155,25 +173,23 @@ pub fn Context::codegen_knf_expr(
       let ty = name_type_map.get(name).unwrap()
       let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
       match val.getType().asTypeEnum() {
-        PointerType(_) => {
-          self.builder.createLoad(llvm_ty, val)
-        }
+        PointerType(_) => self.builder.createLoad(llvm_ty, val)
         _ => val
       }
     }
-    Bool(b) => {
+    Bool(b) =>
       match b {
         true => self.llvm_ctx.getConstTrue()
         false => self.llvm_ctx.getConstFalse()
       }
-    }
     String(_) => {
       println("codegen for string literal not implemented yet")
       panic()
     }
-    Binary(op, left_name, right_name) => {
-      self.codegen_knf_binary_expr(op, left_name, right_name, name_value_map, name_type_map)
-    }
+    Binary(op, left_name, right_name) =>
+      self.codegen_knf_binary_expr(
+        op, left_name, right_name, name_value_map, name_type_map,
+      )
     Not(_) => {
       println("codegen for not expression not implemented yet")
       panic()
@@ -228,13 +244,14 @@ pub fn Context::codegen_knf_expr(
   }
 }
 
+///|
 pub fn Context::codegen_knf_binary_expr(
-  self: Self,
-  op: BinaryOp,
-  left_name: Name,
-  right_name: Name,
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind]
+  self : Self,
+  op : BinaryOp,
+  left_name : Name,
+  right_name : Name,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
   guard name_value_map.get(left_name) is Some(left_val) else {
     println("Compiler ICE: variable not found in name_value_map")
@@ -285,7 +302,8 @@ pub fn Context::codegen_knf_binary_expr(
         panic()
       }
       match ty {
-        Int | Int64 | UInt | UInt64 => self.builder.createICmpEQ(left_val, right_val)
+        Int | Int64 | UInt | UInt64 =>
+          self.builder.createICmpEQ(left_val, right_val)
         Float | Double => self.builder.createFCmpUEQ(left_val, right_val)
         Bool => self.builder.createICmpEQ(left_val, right_val)
         _ => {
@@ -300,7 +318,8 @@ pub fn Context::codegen_knf_binary_expr(
         panic()
       }
       match ty {
-        Int | Int64 | UInt | UInt64 => self.builder.createICmpNE(left_val, right_val)
+        Int | Int64 | UInt | UInt64 =>
+          self.builder.createICmpNE(left_val, right_val)
         Float | Double => self.builder.createFCmpUNE(left_val, right_val)
         Bool => self.builder.createICmpNE(left_val, right_val)
         _ => {
@@ -334,7 +353,9 @@ pub fn Context::codegen_knf_binary_expr(
         UInt | UInt64 => self.builder.createICmpULE(left_val, right_val)
         Float | Double => self.builder.createFCmpULE(left_val, right_val)
         _ => {
-          println("Compiler ICE: unsupported type for less-than-or-equal comparison")
+          println(
+            "Compiler ICE: unsupported type for less-than-or-equal comparison",
+          )
           panic()
         }
       }
@@ -364,7 +385,9 @@ pub fn Context::codegen_knf_binary_expr(
         UInt | UInt64 => self.builder.createICmpUGE(left_val, right_val)
         Float | Double => self.builder.createFCmpUGE(left_val, right_val)
         _ => {
-          println("Compiler ICE: unsupported type for greater-than-or-equal comparison")
+          println(
+            "Compiler ICE: unsupported type for greater-than-or-equal comparison",
+          )
           panic()
         }
       }
@@ -391,8 +414,8 @@ pub fn Context::codegen_knf_binary_expr(
   }
 }
 
-
-fn codegen_for_type(tykind: TypeKind, llvm_ctx: @IR.Context) -> &@IR.Type {
+///|
+fn codegen_for_type(tykind : TypeKind, llvm_ctx : @IR.Context) -> &@IR.Type {
   match tykind {
     Unit => (llvm_ctx.getVoidTy() : &@IR.Type)
     Int => llvm_ctx.getInt32Ty()
