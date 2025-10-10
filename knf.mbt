@@ -152,6 +152,7 @@ pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
   sb.to_string()
 }
 
+///|
 pub fn KnfBlock::nesed_stringify(self : KnfBlock) -> String {
   let sb = StringBuilder::new()
   sb.write_string("{")
@@ -517,7 +518,9 @@ pub fn Context::assign_stmt_to_knf(
       }
     }
     ArrayAccess(left_value, idx_expr) => {
-      let (left_value_stmts, left_value_knf_name) = self.left_value_to_knf(left_value)
+      let (left_value_stmts, left_value_knf_name) = self.left_value_to_knf(
+        left_value,
+      )
       stmts.append(left_value_stmts)
       let (idx_stmts, idx_knf) = self.expr_to_knf(idx_expr)
       stmts.append(idx_stmts)
@@ -583,7 +586,13 @@ pub fn Context::left_value_to_knf(
         println("Compiler ICE: Left value must be an array type.")
         panic()
       }
-      stmts.push(KnfStmt::Let(result_name, elem_ty, KnfExpr::ArrayGet(arr_knf_name, index_name)))
+      stmts.push(
+        KnfStmt::Let(
+          result_name,
+          elem_ty,
+          KnfExpr::ArrayGet(arr_knf_name, index_name),
+        ),
+      )
       (stmts, result_name)
     }
     FieldAccess(_) => {
@@ -999,7 +1008,7 @@ pub fn Context::if_expr_to_knf(
 }
 
 ///|
-pub fn KnfExpr::stringify(self : KnfExpr, ident~:Int = 0) -> String {
+pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
   let s = match self {
     Unit => "()"
     Int(v) => v.to_string()
@@ -1030,8 +1039,8 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident~:Int = 0) -> String {
     }
     If(cond, then_block, else_block) => {
       let cond_str = cond.stringify()
-      let then_str = then_block.stringify(ident=ident+2)
-      let else_str = else_block.stringify(ident=ident+2)
+      let then_str = then_block.stringify(ident=ident + 2)
+      let else_str = else_block.stringify(ident=ident + 2)
       "if \{cond_str} then \{then_str} else \{else_str}"
     }
     CreateStruct(struct_name) => "new \{struct_name}"

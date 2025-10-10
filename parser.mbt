@@ -1,4 +1,3 @@
-
 ///|
 pub fn Context::parse(self : Self) -> Unit raise ParseError {
   guard self.tokens.length() > 0 else {
@@ -1665,7 +1664,7 @@ pub struct LeftValue {
   end_lineno : Int
   end_column : Int
   kind : LeftValueKind
-  mut ty: TypeKind?
+  mut ty : TypeKind?
 } derive(Show, Eq)
 
 ///|

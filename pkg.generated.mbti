@@ -146,7 +146,7 @@ fn Context::array_access_to_knf(Self, ApplyExpr, Expr) -> (Array[KnfStmt], KnfEx
 fn Context::assign_stmt_to_knf(Self, AssignStmt) -> Array[KnfStmt]
 fn Context::atom_expr_to_knf(Self, AtomExpr) -> (Array[KnfStmt], KnfExpr)
 fn Context::binary_expr_to_knf(Self, BinaryOp, Expr, Expr, TypeKind) -> (Array[KnfStmt], KnfExpr)
-fn Context::bind_pat_and_expr_to_knf(Self, Pattern, TypeKind, KnfExpr) -> (Array[KnfStmt], Name)
+fn Context::bind_pat_and_expr_to_knf(Self, Pattern, TypeKind, KnfExpr) -> Array[KnfStmt]
 fn Context::bind_pat_and_name_to_knf(Self, Pattern, TypeKind, Name) -> Array[KnfStmt]
 fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
 fn Context::block_to_knf(Self, BlockExpr) -> KnfBlock
@@ -307,6 +307,7 @@ pub(all) struct KnfBlock {
   stmts : Array[KnfStmt]
   final_expr : KnfExpr
 }
+fn KnfBlock::nesed_stringify(Self) -> String
 fn KnfBlock::stringify(Self, ident~ : Int) -> String
 
 pub(all) enum KnfExpr {
@@ -321,7 +322,7 @@ pub(all) enum KnfExpr {
   String(String)
   Ident(Name)
   Binary(BinaryOp, Name, Name)
-  If(Name, KnfBlock, KnfBlock)
+  If(KnfExpr, KnfBlock, KnfBlock)
   Not(Name)
   Neg(Name)
   Call(Name, Array[Name])
@@ -331,7 +332,7 @@ pub(all) enum KnfExpr {
   ArrayLiteral(Array[Name])
   TupleLiteral(Array[Name])
 }
-fn KnfExpr::stringify(Self) -> String
+fn KnfExpr::stringify(Self, ident? : Int) -> String
 impl Show for KnfExpr
 
 pub(all) struct KnfExternFunc {
@@ -355,8 +356,7 @@ pub(all) enum KnfStmt {
   Assign(Name, Name)
   ArrayPut(Name, Name, KnfExpr)
   StructSet(Name, String, KnfExpr)
-  If(KnfExpr, KnfBlock, KnfBlock)
-  While(KnfExpr, KnfBlock)
+  While(KnfBlock, KnfBlock)
   ExprStmt(KnfExpr)
   Return(KnfExpr)
   ReturnVoid
@@ -381,6 +381,7 @@ pub struct LeftValue {
   end_lineno : Int
   end_column : Int
   kind : LeftValueKind
+  mut ty : TypeKind?
 }
 impl Eq for LeftValue
 impl Show for LeftValue
