@@ -40,6 +40,13 @@ pub impl Show for Name with output(self, logger) {
   logger.write_string("\{self.id}$\{self.slot}")
 }
 
+pub fn Context::knf_convert(self: Self) -> Unit {
+  // 1. collect all top let
+  // 2. collect all extern func
+  // 3. collect all struct def and enum def TODO
+  // 4. convert all top function to knf function
+}
+
 ///|
 pub(all) struct KnfTopLet {
   name : Name

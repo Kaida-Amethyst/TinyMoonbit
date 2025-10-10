@@ -19,6 +19,11 @@ pub struct Context {
 
   // Knf Phase
   mut name_env : Env[String, Name]
+  knf_top_lets: Map[String, KnfTopLet]
+  knf_ext_funcs: Map[String, KnfExternFunc]
+  knf_top_funcs: Map[String, KnfFunction]
+  // knf_struct_defs: Map[String, KnfStructDef]
+  // knf_enum_defs: Map[String, KnfEnumDef]
 
   //
   source_file : String
@@ -38,6 +43,9 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     type_env: Env::new(),
     current_func: None,
     name_env: Env::new(),
+    knf_top_lets: Map::new(),
+    knf_ext_funcs: Map::new(),
+    knf_top_funcs: Map::new(),
     source_file,
   }
 }
