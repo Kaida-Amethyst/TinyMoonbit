@@ -5,9 +5,21 @@ pub struct Name {
 }
 
 pub fn Context::new_name(self: Self, n: String) -> Name {
-  let name_cnt = self.name_counter.get(n).unwrap_or(0)
+  guard self.current_func is Some(current_func) else {
+    println("Compiler ICE: Trying to create a new name outside of a function.")
+    panic()
+  }
+  let name_counter = match self.name_counter.get(current_func.fname) {
+    Some(counter) => counter
+    None => {
+      let counter = Map::new()
+      self.name_counter.set(current_func.fname, counter)
+      counter
+    }
+  }
+  let name_cnt = name_counter.get(n).unwrap_or(0)
   let name = Name::{id: n, slot: name_cnt}
-  self.name_counter.set(n, name_cnt + 1)
+  name_counter.set(n, name_cnt + 1)
   name
 }
 
@@ -39,6 +51,10 @@ pub(all) struct KnfFunction {
 }
 
 pub fn Context::top_function_to_knf(self: Self, func: TopFunction) -> KnfFunction {
+  // Set current function
+  self.current_func = Some(func)
+
+  // Convert parameters
   let params: Array[(Name, TypeKind)] = Array::new()
   for param in func.param_list {
     let { name, ty, ..} = param
@@ -70,6 +86,7 @@ pub fn KnfFunction::stringify(self: KnfFunction) -> String {
 ///|
 pub(all) struct KnfBlock {
   stmts : Array[KnfStmt]
+  final_expr : KnfExpr
 }
 
 pub fn Context::block_to_knf(self: Self, block: BlockExpr) -> KnfBlock {
@@ -78,7 +95,8 @@ pub fn Context::block_to_knf(self: Self, block: BlockExpr) -> KnfBlock {
     let knf_stmt = self.stmt_to_knf(stmt)
     stmts.append(knf_stmt)
   }
-  KnfBlock::{stmts}
+  let final_expr = KnfExpr::Unit
+  KnfBlock::{ stmts, final_expr }
 }
 
 pub fn KnfBlock::stringify(self: KnfBlock, ident~: Int) -> String {
@@ -161,8 +179,31 @@ pub fn Context::let_stmt_to_knf(self: Self, let_stmt: LetStmt) -> Array[KnfStmt]
   }
 }
 
+//pub struct AssignStmt {
+//  lineno : Int
+//  column : Int
+//  end_lineno : Int
+//  end_column : Int
+//  left_value : LeftValue
+//  op : AssignOp
+//  expr : Expr
+//} derive(Show, Eq)
+//pub struct LeftValue {
+//  lineno : Int
+//  column : Int
+//  end_lineno : Int
+//  end_column : Int
+//  kind : LeftValueKind
+//} derive(Show, Eq)
+//
+/////|
+//pub enum LeftValueKind {
+//  Ident(String)
+//  ArrayAccess(LeftValue, Expr)
+//  FieldAccess(LeftValue, String)
+//} derive(Show, Eq)
 pub fn Context::assign_stmt_to_knf(self: Self, assign_stmt: AssignStmt) -> Array[KnfStmt] {
-  ...
+  ... 
 }
 
 pub fn Context::while_stmt_to_knf(self: Self, while_stmt: WhileStmt) -> Array[KnfStmt] {
@@ -221,6 +262,7 @@ pub fn KnfStmt::stringify(self: KnfStmt, ident~: Int) -> String {
 
 ///|
 pub(all) enum KnfExpr {
+  Unit
   Int(Int)
   UInt(UInt)
   Int64(Int64)
@@ -231,6 +273,7 @@ pub(all) enum KnfExpr {
   String(String)
   Ident(Name)
   Binary(BinaryOp, Name, Name)
+  If(Name, KnfBlock, KnfBlock) // condition, then, else
   Not(Name)
   Neg(Name)
   Call(Name, Array[Name])
@@ -241,11 +284,59 @@ pub(all) enum KnfExpr {
 }
 
 pub fn Context::expr_to_knf(self: Self, expr: Expr) -> (Array[KnfStmt], KnfExpr) {
+  match expr.kind {
+    ApplyExpr(apply_expr) => self.apply_expr_to_knf(apply_expr)
+    BlockExpr(block_expr) => {
+      let {stmts, final_expr } = self.block_to_knf(block_expr)
+      (stmts, final_expr)
+    }
+    BinaryExpr(op, lhs, rhs) => {
+      guard expr.ty is Some(ty) else {
+        println("Compiler ICE: Expression must have been inferred type in Type Checking phase.")
+        panic()
+      }
+      self.binary_expr_to_knf(op, lhs, rhs, ty)
+    }
+    IfExpr(if_expr) => self.if_expr_to_knf(if_expr)
+  }
+}
+
+pub fn Context::binary_expr_to_knf(self: Self, op: BinaryOp, lhs: Expr, rhs: Expr, ty: TypeKind) -> (Array[KnfStmt], KnfExpr) {
+  let (lhs_stmts, lhs_knf_expr) = self.expr_to_knf(lhs)
+  let (rhs_stmts, rhs_knf_expr) = self.expr_to_knf(rhs)
+  let stmts = Array::new()
+  stmts..append(lhs_stmts) ..append(rhs_stmts)
+  let lhs_name = match lhs_knf_expr {
+    Ident(name) => name
+    _ => {
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, lhs_knf_expr))
+      name
+    }
+  }
+  let rhs_name = match rhs_knf_expr {
+    Ident(name) => name
+    _ => {
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, rhs_knf_expr))
+      name
+    }
+  }
+  let result_expr = KnfExpr::Binary(op, lhs_name, rhs_name)
+  (stmts, result_expr)
+}
+
+pub fn Context::apply_expr_to_knf(self: Self, apply_expr: ApplyExpr) -> (Array[KnfStmt], KnfExpr) {
+  ...
+}
+
+pub fn Context::if_expr_to_knf(self: Self, if_expr: IfExpr) -> (Array[KnfStmt], KnfExpr) {
   ...
 }
 
 pub fn KnfExpr::stringify(self: KnfExpr) -> String {
   match self {
+    KnfExpr::Unit => "()"
     KnfExpr::Int(v) => v.to_string()
     KnfExpr::UInt(v) => v.to_string()
     KnfExpr::Int64(v) => v.to_string()
@@ -271,6 +362,16 @@ pub fn KnfExpr::stringify(self: KnfExpr) -> String {
     KnfExpr::TupleLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "(\{elements_str})"
+    }
+    KnfExpr::If(cond_name, then_block, else_block) => {
+      let sb = StringBuilder::new()
+      sb.write_string("if \{cond_name} ")
+      sb.write_string(then_block.stringify(ident=2))
+      if else_block.stmts.length() > 0 {
+        sb.write_string(" else ")
+        sb.write_string(else_block.stringify(ident=2))
+      }
+      sb.to_string()
     }
   }
 }

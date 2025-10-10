@@ -18,7 +18,7 @@ pub struct Context {
   mut current_func : TopFunction?
 
   // Knf Phase
-  name_counter: Map[String, Int] // for generating unique variable names
+  name_counter: Map[String, Map[String, Int]] // for generating unique variable names
 
   //
   source_file : String
