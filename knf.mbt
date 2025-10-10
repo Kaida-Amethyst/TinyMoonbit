@@ -152,6 +152,21 @@ pub fn KnfBlock::stringify(self : KnfBlock, ident~ : Int) -> String {
   sb.to_string()
 }
 
+pub fn KnfBlock::nesed_stringify(self : KnfBlock) -> String {
+  let sb = StringBuilder::new()
+  sb.write_string("{")
+  let indent_str = "  "
+  for stmt in self.stmts {
+    sb.write_string(indent_str)
+    sb.write_string(stmt.stringify(ident=0))
+    sb.write_string("; ")
+  }
+  sb.write_string(self.final_expr.stringify())
+  sb.write_string("")
+  sb.write_string("}")
+  sb.to_string()
+}
+
 ///|
 pub(all) enum KnfStmt {
   Let(Name, TypeKind, KnfExpr)
@@ -160,7 +175,7 @@ pub(all) enum KnfStmt {
   ArrayPut(Name, Name, KnfExpr)
   StructSet(Name, String, KnfExpr)
   If(KnfExpr, KnfBlock, KnfBlock)
-  While(KnfExpr, KnfBlock)
+  While(KnfBlock, KnfBlock)
   ExprStmt(KnfExpr)
   Return(KnfExpr)
   ReturnVoid
@@ -502,7 +517,28 @@ pub fn Context::assign_stmt_to_knf(
         }
       }
     }
-    ArrayAccess(_) => abort("Unimplemented yet")
+    ArrayAccess(left_value, idx_expr) => {
+      let (left_value_stmts, left_value_knf_name) = self.left_value_to_knf(left_value)
+      stmts.append(left_value_stmts)
+      let (idx_stmts, idx_knf) = self.expr_to_knf(idx_expr)
+      stmts.append(idx_stmts)
+      let tmp_idx_name = match idx_knf {
+        Ident(name) => name
+        _ => {
+          guard idx_expr.ty is Some(ty) else {
+            println(
+              "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+            )
+            panic()
+          }
+          let name = self.new_name("tmp")
+          stmts.push(KnfStmt::Let(name, ty, idx_knf))
+          name
+        }
+      }
+      stmts.push(KnfStmt::Let(tmp_idx_name, ty, expr_knf))
+      stmts.push(KnfStmt::ArrayPut(left_value_knf_name, tmp_idx_name, expr_knf))
+    }
     FieldAccess(_) => abort("Unimplemented yet")
   }
   stmts
@@ -513,7 +549,49 @@ pub fn Context::left_value_to_knf(
   self : Self,
   left_value : LeftValue,
 ) -> (Array[KnfStmt], Name) {
-  ...
+  match left_value.kind {
+    Ident(id) => {
+      let name = self.get_knf_name(id)
+      (Array::new(), name)
+    }
+    ArrayAccess(arr_left_value, index_expr) => {
+      let (arr_stmts, arr_knf_name) = self.left_value_to_knf(arr_left_value)
+      let (index_stmts, index_knf) = self.expr_to_knf(index_expr)
+      let stmts = Array::new()
+      stmts..append(arr_stmts)..append(index_stmts)
+      let index_name = match index_knf {
+        Ident(name) => name
+        _ => {
+          guard index_expr.ty is Some(ty) else {
+            println(
+              "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+            )
+            panic()
+          }
+          let name = self.new_name("tmp")
+          stmts.push(KnfStmt::Let(name, ty, index_knf))
+          name
+        }
+      }
+      let result_name = self.new_name("tmp")
+      guard arr_left_value.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Left value must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      guard ty is Array(elem_ty) else {
+        println("Compiler ICE: Left value must be an array type.")
+        panic()
+      }
+      stmts.push(KnfStmt::Let(result_name, elem_ty, KnfExpr::ArrayGet(arr_knf_name, index_name)))
+      (stmts, result_name)
+    }
+    FieldAccess(_) => {
+      println("Unimplemented yet")
+      panic()
+    }
+  }
 }
 
 ///|
@@ -556,14 +634,17 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident~ : Int) -> String {
       }
     }
     KnfStmt::While(cond, body) => {
-      sb.write_string("while \{cond.stringify()} ")
+      if cond.stmts.length() < 2 {
+        sb.write_string("while \{cond.nesed_stringify()} do ")
+      } else {
+        let cond_str = cond.stringify(ident=ident + 2)
+        sb.write_string("while \{cond_str} do ")
+      }
       sb.write_string(body.stringify(ident=ident + 2))
     }
     KnfStmt::ExprStmt(expr) => sb.write_string("\{expr.stringify()};")
     KnfStmt::Return(expr) => sb.write_string("return \{expr.stringify()};")
     KnfStmt::ReturnVoid => sb.write_string("return;")
-    KnfStmt::StructSet(struct_name, field_name, expr) =>
-      sb.write_string("\{struct_name}.\{field_name} = \{expr.stringify()};")
   }
   sb.to_string()
 }
@@ -586,7 +667,6 @@ pub(all) enum KnfExpr {
   String(String)
   Ident(Name)
   Binary(BinaryOp, Name, Name)
-  If(Name, KnfBlock, KnfBlock) // condition, then, else
   Not(Name)
   Neg(Name)
   Call(Name, Array[Name])
@@ -947,16 +1027,6 @@ pub fn KnfExpr::stringify(self : KnfExpr) -> String {
     TupleLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "(\{elements_str})"
-    }
-    If(cond_name, then_block, else_block) => {
-      let sb = StringBuilder::new()
-      sb.write_string("if \{cond_name} ")
-      sb.write_string(then_block.stringify(ident=2))
-      if else_block.stmts.length() > 0 {
-        sb.write_string(" else ")
-        sb.write_string(else_block.stringify(ident=2))
-      }
-      sb.to_string()
     }
     CreateStruct(struct_name) => "new \{struct_name}"
   }

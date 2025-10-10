@@ -424,7 +424,7 @@ pub fn Context::type_check_left_value(
   self : Self,
   lv : LeftValue,
 ) -> TypeKind raise TypeCheckError {
-  match lv.kind {
+  let ty = match lv.kind {
     Ident(name) => {
       guard self.get_ident_type(name) is Some(ty) else {
         raise TypeCheckError("undefined variable in left value: \{name}")
@@ -452,6 +452,8 @@ pub fn Context::type_check_left_value(
       ...
     }
   }
+  lv.ty = Some(ty)
+  ty
 }
 
 ///|

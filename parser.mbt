@@ -1,111 +1,3 @@
-///|
-/// TinyMoonBit Syntax
-///
-/// Program :=
-///     TopFunction
-///   | ExternFunction
-///   | TopLet
-///   | StructDef
-///   | EnumDef
-///
-/// ExternFunction :=
-///   "extern" "fn" func_name "(" param* ")" "->" Type "=" stringlit ";"; 
-///
-/// TopLet :=
-///   "let" ident TypeAnnote? "=" Expr ";"
-///
-/// StructDef :=
-///   "struct" upper_ident "{" struct_item* "}"
-///
-/// struct_item := ident TypeAnnote ";"
-///
-/// EnumDef :=
-///   "enum" upper_ident "{" enum_item* "}"
-///
-/// enum_item := upper_ident ("(" Type+ ")")? ";"
-///
-/// TopFunction :=
-///   "fn" ident "(" param* ")" "->" Type "{" Stmt* "}"
-///
-/// Stmt :=
-///     LetStmt
-///   | LetMutStmt
-///   | AssignStmt
-///   | WhileStmt
-///   | ForStmt
-///   | ReturnStmt
-///
-/// LetStmt :=
-///   "let" pattern TypeAnnote? "=" Expr ";"
-///
-/// LetMutStmt :=
-///   "let" "mut" ident TypeAnnote? "=" Expr ";"
-///
-/// AssignStmt :=
-///   left_value assign_op Expr ";"
-///
-/// left_value :=
-///     ident
-///   | left_value "[" Expr "]" ;; Array Access
-///   | left_value "." ident ;; Field Access
-///
-/// assign_op := "=" | "+=" | "-=" | "*="
-///
-/// WhileStmt :=
-///   "while" Expr "{" Stmt* "}"
-///
-/// ForStmt :=
-///  "for" for_init? ";" for_cond? ";" for_step? "{" Stmt* "}" 
-///
-/// for_init := (ident "=" Expr)*
-/// for_cond := Expr
-/// for_step := (ident assign_op Expr)*
-///
-/// ReturnStmt := "return" Expr? ";"
-///
-/// Expr :=
-///     ApplyExpr
-///   | ApplyExpr binop ApplyExpr ;; Binary
-///   | IfExpr
-///   | MatchExpr
-///   | BlockExpr
-///
-/// unop := "-" | "+" | "!"
-///
-/// binop: "+" | "-" | "*" | "/" | "%" | ">>" | "<<" |
-///        "==" | ">=" | "<=" | ">" | "<" | "!="
-///
-/// ApplyExpr :=
-///     AtomExpr
-///   | ApplyExpr "[" Expr "]"  ;; Array Access
-///   | ApplyExpr "(" Expr* ")" ;; Function Call 
-///
-/// AtomExpr :=
-///     Literal
-///   | ident
-///   | "(" ")" ;; Unit
-///   | "(" Expr ")"  ;; Paren
-///   | "(" expr_list ")"  ;; Tuple
-///   | "[" expr_list? "]" ;; Array
-///   | BlockExpr
-///   | IfExpr
-///   | MatchExpr
-///   | StructConstruct
-///
-/// BlockExpr :=
-///   "{" Stmt* Expr? "}"
-///
-/// IfExpr :=
-///   "if" Expr BlockExpr ("else" BlockExpr)?
-///
-/// MatchExpr :=
-///   "match" Expr "{" match_item "}"
-///
-/// StructConstruct :=
-///   Upper "::" "{" (ident ":" Expr)* "}"
-///
-/// match_item :=
-///   pattern ("if" Expr)? "=>" Expr ";"
 
 ///|
 pub fn Context::parse(self : Self) -> Unit raise ParseError {
@@ -1773,6 +1665,7 @@ pub struct LeftValue {
   end_lineno : Int
   end_column : Int
   kind : LeftValueKind
+  mut ty: TypeKind?
 } derive(Show, Eq)
 
 ///|
@@ -1796,6 +1689,7 @@ pub fn Context::parse_left_value(
     end_lineno: lineno,
     end_column: column,
     kind: LeftValueKind::Ident(ident),
+    ty: None,
   }
   if !(tokens is [{ kind: Bracket('[') | Dot, .. }, ..]) {
     return (left_value, tokens)
@@ -1813,6 +1707,7 @@ pub fn Context::parse_left_value(
         end_lineno: lineno,
         end_column: column,
         kind: LeftValueKind::ArrayAccess(left_value, index_expr),
+        ty: None,
       }
       continue tokens
     }
@@ -1823,6 +1718,7 @@ pub fn Context::parse_left_value(
         end_lineno: lineno,
         end_column: column,
         kind: LeftValueKind::FieldAccess(left_value, field),
+        ty: None,
       }
       continue tokens
     }
