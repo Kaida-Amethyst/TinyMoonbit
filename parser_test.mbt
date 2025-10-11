@@ -661,7 +661,7 @@ test "Struct Def Parsing" {
   let code =
     #|struct Point {
     #|  x: Int;
-    #|  y: Int
+    #|  mut y: Int
     #|}
     #|
     #|struct Tri[T, U, K] {
@@ -677,7 +677,9 @@ test "Struct Def Parsing" {
   assert_true(struct_def.generic_params.length() is 0)
   assert_true(struct_def.fields.length() is 2)
   assert_true(struct_def.fields[0] is { name: "x", ty: { kind: Int, .. }, .. })
+  assert_true(struct_def.fields[0].is_mut is false)
   assert_true(struct_def.fields[1] is { name: "y", ty: { kind: Int, .. }, .. })
+  assert_true(struct_def.fields[1].is_mut is true)
   // Second struct
   let (struct_def, tok_view) = ctx.parse_struct_def(tok_view)
   assert_true(struct_def.name is "Tri")

@@ -2140,6 +2140,7 @@ pub struct StructField {
   end_lineno : Int
   end_column : Int
   name : String
+  is_mut: Bool
   ty : Type
 } derive(Show, Eq)
 
@@ -2148,6 +2149,11 @@ pub fn Context::parse_struct_field(
   self : Self,
   tokens : ArrayView[Token],
 ) -> (StructField, ArrayView[Token]) raise ParseError {
+  let (is_mut, tokens) = if tokens is [{ kind: Keyword(Mut), .. }, ..] {
+    (true, tokens[1:])
+  } else {
+    (false, tokens)
+  }
   guard tokens is [{ kind: Lower(name), lineno, column }, .. tokens] else {
     raise ParseError((tokens[0], "Expect struct field name"))
   }
@@ -2160,6 +2166,7 @@ pub fn Context::parse_struct_field(
     column,
     end_lineno: ty.end_lineno,
     end_column: ty.end_column,
+    is_mut,
     name,
     ty,
   }
