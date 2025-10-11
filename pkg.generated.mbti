@@ -161,10 +161,13 @@ fn Context::bind_pattern(Self, Pattern, TypeKind) -> Unit raise TypeCheckError
 fn Context::block_to_knf(Self, BlockExpr) -> KnfBlock
 fn Context::call_expr_to_knf(Self, ApplyExpr, Array[Expr]) -> (Array[KnfStmt], KnfExpr)
 fn Context::codegen_knf_binary_expr(Self, BinaryOp, Name, Name, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
+fn Context::codegen_knf_block(Self, KnfBlock, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value? raise
+fn Context::codegen_knf_call_expr(Self, Name, Array[Name], Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
 fn Context::codegen_knf_expr(Self, KnfExpr, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
 fn Context::codegen_knf_ext_func(Self, KnfExternFunc) -> Unit raise
 fn Context::codegen_knf_func(Self, KnfFunction) -> Unit raise
 fn Context::codegen_knf_func_for_func_value(Self, KnfFunction) -> Unit raise
+fn Context::codegen_knf_if_expr(Self, KnfExpr, KnfBlock, KnfBlock, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
 fn Context::codegen_knf_stmt(Self, KnfStmt, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> Unit raise
 fn Context::expr_to_knf(Self, Expr) -> (Array[KnfStmt], KnfExpr)
 fn Context::field_access_to_knf(Self, ApplyExpr, String) -> (Array[KnfStmt], KnfExpr)
@@ -261,6 +264,8 @@ impl Show for Expr
 pub enum ExprKind {
   ApplyExpr(ApplyExpr)
   BlockExpr(BlockExpr)
+  NotExpr(Expr)
+  NegExpr(Expr)
   BinaryExpr(BinaryOp, Expr, Expr)
   IfExpr(IfExpr)
 }

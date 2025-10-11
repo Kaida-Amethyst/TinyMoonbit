@@ -300,16 +300,18 @@ pub fn Context::codegen_knf_expr(
         }
       }
     }
-    If(cond_expr, then_block, else_block) => self.codegen_knf_if_expr(
-      cond_expr, then_block, else_block, name_value_map, name_type_map,
-    )
+    If(cond_expr, then_block, else_block) =>
+      self.codegen_knf_if_expr(
+        cond_expr, then_block, else_block, name_value_map, name_type_map,
+      )
     ArrayGet(_) => {
       println("codegen for array get not implemented yet")
       panic()
     }
-    Call(fname, arg_names) => self.codegen_knf_call_expr(
-      fname, arg_names, name_value_map, name_type_map,
-    )
+    Call(fname, arg_names) =>
+      self.codegen_knf_call_expr(
+        fname, arg_names, name_value_map, name_type_map,
+      )
     CreateStruct(_) => {
       println("codegen for create struct not implemented yet")
       panic()
@@ -329,18 +331,17 @@ pub fn Context::codegen_knf_expr(
   }
 }
 
+///|
 pub fn Context::codegen_knf_if_expr(
-  self: Self,
-  cond_expr: KnfExpr,
-  then_block: KnfBlock,
-  else_block: KnfBlock,
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind]
+  self : Self,
+  cond_expr : KnfExpr,
+  then_block : KnfBlock,
+  else_block : KnfBlock,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
   // Evaluate the condition
-  let cond_val = self.codegen_knf_expr(
-    cond_expr, name_value_map, name_type_map,
-  )
+  let cond_val = self.codegen_knf_expr(cond_expr, name_value_map, name_type_map)
 
   // Get the current function
   let curr_bb = self.builder.getInsertBlock()
@@ -399,12 +400,13 @@ pub fn Context::codegen_knf_if_expr(
   }
 }
 
+///|
 pub fn Context::codegen_knf_call_expr(
-  self: Self,
-  fname: Name,
-  arg_names: Array[Name],
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind]
+  self : Self,
+  fname : Name,
+  arg_names : Array[Name],
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
   guard self.llvm_funcs.get(fname.to_string()) is Some(func) else {
     println("Compiler ICE: function not found in llvm_funcs")
