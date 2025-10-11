@@ -3,7 +3,7 @@
 import subprocess
 import os
 
-test_files = ["fib.mbt", "gcd.mbt", "sum.mbt"]
+test_files = ["fib.mbt", "gcd.mbt", "sum.mbt", "spill.mbt", "caltz.mbt", "binary.mbt", "ack.mbt"]
 
 def run_command(command):
     """Runs a command and returns its output and error."""
