@@ -294,101 +294,22 @@ pub fn Context::codegen_knf_expr(
           }
           self.builder.createFSub(zero, val)
         }
-        //Float | Double => self.builder.createFNeg(val)
         _ => {
           println("Compiler ICE: unsupported type for negation")
           panic()
         }
       }
-      //println("codegen for neg expression not implemented yet")
-      //panic()
     }
-    If(cond_expr, then_block, else_block) => {
-      // Evaluate the condition
-      let cond_val = self.codegen_knf_expr(
-        cond_expr, name_value_map, name_type_map,
-      )
-
-      // Get the current function
-      let curr_bb = self.builder.getInsertBlock()
-      let func = curr_bb.getParent()
-
-      // Create basic blocks for then, else, and merge
-      let then_bb = func.addBasicBlock()
-      let else_bb = func.addBasicBlock()
-      let merge_bb = func.addBasicBlock()
-
-      // Create conditional branch
-      let _ = self.builder.createCondBr(cond_val, then_bb, else_bb)
-
-      // Generate then block
-      self.builder.setInsertPoint(then_bb)
-      let then_val = self.codegen_knf_block(
-        then_block, name_value_map, name_type_map,
-      )
-      // Get the block we ended up in (might be different due to nested control flow)
-      let then_end_bb = self.builder.getInsertBlock()
-      // Only create branch if the block doesn't already have a terminator
-      if then_end_bb.getTerminator().is_empty() {
-        let _ = self.builder.createBr(merge_bb)
-
-      }
-
-      // Generate else block
-      self.builder.setInsertPoint(else_bb)
-      let else_val = self.codegen_knf_block(
-        else_block, name_value_map, name_type_map,
-      )
-      // Get the block we ended up in
-      let else_end_bb = self.builder.getInsertBlock()
-      // Only create branch if the block doesn't already have a terminator
-      if else_end_bb.getTerminator().is_empty() {
-        let _ = self.builder.createBr(merge_bb)
-
-      }
-
-      // Move to merge block
-      self.builder.setInsertPoint(merge_bb)
-
-      // If both branches return values (not Unit/void), create a PHI node
-      match (then_val, else_val) {
-        (Some(tv), Some(ev)) => {
-          // Both branches return values, create PHI node
-          let phi = self.builder.createPHI(tv.getType())
-          phi.addIncoming(tv, then_end_bb)
-          phi.addIncoming(ev, else_end_bb)
-          (phi : &@IR.Value) // Cast PHINode to Value
-        }
-        _ =>
-          // One or both branches don't return a value (Unit type)
-          // Return a dummy value since we need to return something
-          // This should only happen when the if expression is used for side effects
-          (self.llvm_ctx.getConstInt32(0) : &@IR.Value)
-      }
-    }
+    If(cond_expr, then_block, else_block) => self.codegen_knf_if_expr(
+      cond_expr, then_block, else_block, name_value_map, name_type_map,
+    )
     ArrayGet(_) => {
       println("codegen for array get not implemented yet")
       panic()
     }
-    Call(fname, arg_names) => {
-      guard self.llvm_funcs.get(fname.to_string()) is Some(func) else {
-        println("Compiler ICE: function not found in llvm_funcs")
-        panic()
-      }
-      let arg_vals = arg_names.map(arg_name => {
-        guard name_value_map.get(arg_name) is Some(val) else {
-          println("Compiler ICE: variable not found in name_value_map")
-          panic()
-        }
-        let ty = name_type_map.get(arg_name).unwrap()
-        let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
-        match val.getType().asTypeEnum() {
-          PointerType(_) => self.builder.createLoad(llvm_ty, val)
-          _ => val
-        }
-      })
-      self.builder.createCall(func, arg_vals)
-    }
+    Call(fname, arg_names) => self.codegen_knf_call_expr(
+      fname, arg_names, name_value_map, name_type_map,
+    )
     CreateStruct(_) => {
       println("codegen for create struct not implemented yet")
       panic()
@@ -406,6 +327,102 @@ pub fn Context::codegen_knf_expr(
       panic()
     }
   }
+}
+
+pub fn Context::codegen_knf_if_expr(
+  self: Self,
+  cond_expr: KnfExpr,
+  then_block: KnfBlock,
+  else_block: KnfBlock,
+  name_value_map: Map[Name, &@IR.Value],
+  name_type_map: Map[Name, TypeKind]
+) -> &@IR.Value raise {
+  // Evaluate the condition
+  let cond_val = self.codegen_knf_expr(
+    cond_expr, name_value_map, name_type_map,
+  )
+
+  // Get the current function
+  let curr_bb = self.builder.getInsertBlock()
+  let func = curr_bb.getParent()
+
+  // Create basic blocks for then, else, and merge
+  let then_bb = func.addBasicBlock()
+  let else_bb = func.addBasicBlock()
+  let merge_bb = func.addBasicBlock()
+
+  // Create conditional branch
+  let _ = self.builder.createCondBr(cond_val, then_bb, else_bb)
+
+  // Generate then block
+  self.builder.setInsertPoint(then_bb)
+  let then_val = self.codegen_knf_block(
+    then_block, name_value_map, name_type_map,
+  )
+  // Get the block we ended up in (might be different due to nested control flow)
+  let then_end_bb = self.builder.getInsertBlock()
+  // Only create branch if the block doesn't already have a terminator
+  if then_end_bb.getTerminator().is_empty() {
+    let _ = self.builder.createBr(merge_bb)
+
+  }
+
+  // Generate else block
+  self.builder.setInsertPoint(else_bb)
+  let else_val = self.codegen_knf_block(
+    else_block, name_value_map, name_type_map,
+  )
+  // Get the block we ended up in
+  let else_end_bb = self.builder.getInsertBlock()
+  // Only create branch if the block doesn't already have a terminator
+  if else_end_bb.getTerminator().is_empty() {
+    let _ = self.builder.createBr(merge_bb)
+
+  }
+
+  // Move to merge block
+  self.builder.setInsertPoint(merge_bb)
+
+  // If both branches return values (not Unit/void), create a PHI node
+  match (then_val, else_val) {
+    (Some(tv), Some(ev)) => {
+      // Both branches return values, create PHI node
+      let phi = self.builder.createPHI(tv.getType())
+      phi.addIncoming(tv, then_end_bb)
+      phi.addIncoming(ev, else_end_bb)
+      (phi : &@IR.Value) // Cast PHINode to Value
+    }
+    // One or both branches don't return a value (Unit type)
+    // Return a dummy value since we need to return something
+    // This should only happen when the if expression is used for side effects
+    _ => (self.llvm_ctx.getConstInt32(0) : &@IR.Value)
+  }
+}
+
+pub fn Context::codegen_knf_call_expr(
+  self: Self,
+  fname: Name,
+  arg_names: Array[Name],
+  name_value_map: Map[Name, &@IR.Value],
+  name_type_map: Map[Name, TypeKind]
+) -> &@IR.Value raise {
+  guard self.llvm_funcs.get(fname.to_string()) is Some(func) else {
+    println("Compiler ICE: function not found in llvm_funcs")
+    panic()
+  }
+  let arg_vals = arg_names.map(arg_name => {
+    guard name_value_map.get(arg_name) is Some(val) else {
+      println("Compiler ICE: variable not found in name_value_map")
+      panic()
+    }
+    let ty = name_type_map.get(arg_name).unwrap()
+    let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+    match val.getType().asTypeEnum() {
+      PointerType(_) => self.builder.createLoad(llvm_ty, val)
+      _ => val
+    }
+  })
+  self.builder.createCall(func, arg_vals)
 }
 
 ///|
