@@ -142,6 +142,10 @@ pub(all) struct KnfStructDef {
   fields : Array[(String, Bool, TypeKind)]
 }
 
+pub fn KnfStructDef::get_field_idx(self: Self, field_name: String) -> Int? {
+  self.fields.search_by( f => f.0 == field_name )
+}
+
 ///|
 pub fn Context::top_struct_def_to_knf(
   self : Self,

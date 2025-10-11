@@ -23,14 +23,20 @@ pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
 }
 
 ///|
-pub fn Context::codegen_knf_struct_def(self : Self, struct_def : KnfStructDef) -> Unit raise {
+pub fn Context::codegen_knf_struct_def(
+  self : Self,
+  struct_def : KnfStructDef,
+) -> Unit raise {
   let { llvm_ctx, .. } = self
   let field_tys = struct_def.fields.map(f => {
     let (_, _, field_ty) = f
     codegen_for_type(field_ty, llvm_ctx)
   })
   let struct_name = struct_def.name.to_string()
-  let struct_ty = llvm_ctx.getStructType(field_tys, name=struct_def.name.to_string())
+  let struct_ty = llvm_ctx.getStructType(
+    field_tys,
+    name=struct_def.name.to_string(),
+  )
   self.llvm_struct_tys.set(struct_name, struct_ty)
 }
 
@@ -137,9 +143,45 @@ pub fn Context::codegen_knf_stmt(
       let _ = self.builder.createStore(expr_val, var_ptr)
 
     }
-    ArrayPut(_) => {
-      println("codegen for array put not implemented yet")
-      panic()
+    ArrayPut(array_name, index_name, value_expr) => {
+      let array_val = name_value_map.get(array_name).unwrap()
+      let array_ty = name_type_map.get(array_name).unwrap()
+      let index_val = name_value_map.get(index_name).unwrap()
+
+      // Load index if it's a pointer (mutable variable)
+      let index_ty = name_type_map.get(index_name).unwrap()
+      let index_val = match index_val.getType().asTypeEnum() {
+        PointerType(_) => {
+          let llvm_ty = codegen_for_type(index_ty, self.llvm_ctx)
+          self.builder.createLoad(llvm_ty, index_val)
+        }
+        _ => index_val
+      }
+
+      // Get the value to store
+      let value_val = self.codegen_knf_expr(
+        value_expr, name_value_map, name_type_map,
+      )
+
+      // Arrays are stored as pointers, so we need to GEP to get the element pointer
+      let elem_ty = match array_ty {
+        Array(elem_ty) => elem_ty
+        _ => {
+          println("Compiler ICE: ArrayPut expects array type")
+          panic()
+        }
+      }
+
+      // Create GEP to get pointer to element
+      let elem_ptr = self.builder.createGEP(
+        array_val,
+        codegen_for_type(elem_ty, self.llvm_ctx),
+        [index_val],
+      )
+
+      // Store the value
+      let _ = self.builder.createStore(value_val, elem_ptr)
+
     }
     ExprStmt(expr) => {
       let _ = self.codegen_knf_expr(expr, name_value_map, name_type_map)
@@ -192,9 +234,48 @@ pub fn Context::codegen_knf_stmt(
       // Move to exit block for subsequent code
       self.builder.setInsertPoint(exit_bb)
     }
-    StructSet(_) => {
-      println("codegen for struct set not implemented yet")
-      panic()
+    StructSet(struct_name, field_name, value_expr) => {
+      let struct_val = name_value_map.get(struct_name).unwrap()
+      let struct_ty = name_type_map.get(struct_name).unwrap()
+
+      // Get the value to store
+      let value_val = self.codegen_knf_expr(
+        value_expr, name_value_map, name_type_map,
+      )
+
+      // Get struct definition to find field index
+      guard struct_ty is Defined(type_name, _) else {
+        println("Compiler ICE: StructSet expects struct type")
+        panic()
+      }
+      guard self.knf_struct_defs.get(type_name) is Some(struct_def) else {
+        println("Compiler ICE: Struct definition not found for \{type_name}")
+        panic()
+      }
+
+      // Find field index
+      let field_idx = struct_def.get_field_idx(field_name)
+      guard field_idx is Some(field_index) else {
+        println(
+          "Compiler ICE: Field \{field_name} not found in struct \{type_name}",
+        )
+        panic()
+      }
+
+      // Create GEP to get pointer to field
+      let zero = self.llvm_ctx.getConstInt32(0)
+      let field_idx = self.llvm_ctx.getConstInt32(field_index)
+      guard self.llvm_struct_tys.get(type_name) is Some(struct_llvm_ty) else {
+        println("Compiler ICE: LLVM struct type not found for \{type_name}")
+        panic()
+      }
+      let field_ptr = self.builder.createGEP(struct_val, struct_llvm_ty, [
+        zero, field_idx,
+      ])
+
+      // Store the value
+      let _ = self.builder.createStore(value_val, field_ptr)
+
     }
     Return(expr) => {
       let ret_val = self.codegen_knf_expr(expr, name_value_map, name_type_map)
@@ -259,10 +340,19 @@ pub fn Context::codegen_knf_expr(
         panic()
       }
       let ty = name_type_map.get(name).unwrap()
-      let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
-      match val.getType().asTypeEnum() {
-        PointerType(_) => self.builder.createLoad(llvm_ty, val)
-        _ => val
+
+      // Arrays and structs are kept as pointers
+      match ty {
+        Array(_) | Defined(_, _) => val
+        _ =>
+          // For scalar types, load if it's a pointer (mutable variable)
+          match val.getType().asTypeEnum() {
+            PointerType(_) => {
+              let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+              self.builder.createLoad(llvm_ty, val)
+            }
+            _ => val
+          }
       }
     }
     Bool(b) =>
@@ -305,11 +395,7 @@ pub fn Context::codegen_knf_expr(
         }
         Float | Double => {
           // TODO: use createFNeg when it available
-          let zero = match ty {
-            Float => self.llvm_ctx.getConstFloat(0.0)
-            _ => self.llvm_ctx.getConstDouble(0.0)
-          }
-          self.builder.createFSub(zero, val)
+          self.builder.createFNeg(val)
         }
         _ => {
           println("Compiler ICE: unsupported type for negation")
@@ -321,9 +407,38 @@ pub fn Context::codegen_knf_expr(
       self.codegen_knf_if_expr(
         cond_expr, then_block, else_block, name_value_map, name_type_map,
       )
-    ArrayGet(_) => {
-      println("codegen for array get not implemented yet")
-      panic()
+    ArrayGet(array_name, index_name) => {
+      let array_val = name_value_map.get(array_name).unwrap()
+      let array_ty = name_type_map.get(array_name).unwrap()
+      let index_val = name_value_map.get(index_name).unwrap()
+
+      // Load index if it's a pointer (mutable variable)
+      let index_ty = name_type_map.get(index_name).unwrap()
+      let index_val = match index_val.getType().asTypeEnum() {
+        PointerType(_) => {
+          let llvm_ty = codegen_for_type(index_ty, self.llvm_ctx)
+          self.builder.createLoad(llvm_ty, index_val)
+        }
+        _ => index_val
+      }
+
+      // Arrays are stored as pointers, so we need to GEP to get the element pointer
+      // then load the value
+      guard array_ty is Array(elem_ty) else {
+        println("Compiler ICE: ArrayGet expects array type")
+        panic()
+      }
+
+      // Create GEP to get pointer to element
+      let elem_ptr = self.builder.createGEP(
+        array_val,
+        codegen_for_type(elem_ty, self.llvm_ctx),
+        [index_val],
+      )
+
+      // Load the element value
+      let elem_llvm_ty = codegen_for_type(elem_ty, self.llvm_ctx)
+      self.builder.createLoad(elem_llvm_ty, elem_ptr)
     }
     Call(fname, arg_names) =>
       self.codegen_knf_call_expr(
@@ -341,12 +456,16 @@ pub fn Context::codegen_knf_expr(
       println("codegen for tuple get not implemented yet")
       panic()
     }
-    StructGet(obj_name, field_name) => {
-      self.codegen_for_struct_get(obj_name, field_name, name_value_map, name_type_map)
-    }
-    ArrayAlloc(_) => {
-      println("codegen for array alloc not implemented yet")
-      panic()
+    StructGet(obj_name, field_name) =>
+      self.codegen_for_struct_get(
+        obj_name, field_name, name_value_map, name_type_map,
+      )
+    ArrayAlloc(elem_ty, size) => {
+      // Allocate array on the stack
+      let elem_llvm_ty = codegen_for_type(elem_ty, self.llvm_ctx)
+      let array_ty = self.llvm_ctx.getArrayType(elem_llvm_ty, size)
+      let array_ptr = self.builder.createAlloca(array_ty)
+      (array_ptr : &@IR.Value)
     }
     TupleLiteral(_) => {
       println("codegen for tuple literal not implemented yet")
@@ -355,19 +474,61 @@ pub fn Context::codegen_knf_expr(
   }
 }
 
+///|
 pub fn Context::codegen_for_struct_get(
-  self: Self,
-  obj_name: Name, 
-  field_name: String,
-  name_value_map: Map[Name, &@IR.Value],
-  name_type_map: Map[Name, TypeKind]
+  self : Self,
+  obj_name : Name,
+  field_name : String,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
-  ignore(self)
-  ignore(obj_name)
-  ignore(field_name)
-  ignore(name_value_map)
-  ignore(name_type_map)
-  ...
+  let obj_val = name_value_map.get(obj_name).unwrap()
+  let obj_ty = name_type_map.get(obj_name).unwrap()
+
+  // Get struct definition to find field index
+  guard obj_ty is Defined(struct_name, _) else {
+    println("Compiler ICE: StructGet expects struct type")
+    panic()
+  }
+  guard self.knf_struct_defs.get(struct_name) is Some(struct_def) else {
+    println("Compiler ICE: Struct definition not found for \{struct_name}")
+    panic()
+  }
+
+  // Find field index
+  let mut field_index = -1
+  for i, field in struct_def.fields {
+    let (fname, _, _) = field
+    if fname == field_name {
+      field_index = i
+      break
+    }
+  }
+  guard field_index >= 0 else {
+    println(
+      "Compiler ICE: Field \{field_name} not found in struct \{struct_name}",
+    )
+    panic()
+  }
+
+  // Get field type
+  let (_, _, field_ty) = struct_def.fields[field_index]
+
+  // Create GEP to get pointer to field
+  // For structs, we need two indices: [0, field_index]
+  let zero = self.llvm_ctx.getConstInt32(0)
+  let field_idx = self.llvm_ctx.getConstInt32(field_index)
+  guard self.llvm_struct_tys.get(struct_name) is Some(struct_llvm_ty) else {
+    println("Compiler ICE: LLVM struct type not found for \{struct_name}")
+    panic()
+  }
+  let field_ptr = self.builder.createGEP(obj_val, struct_llvm_ty, [
+    zero, field_idx,
+  ])
+
+  // Load the field value
+  let field_llvm_ty = codegen_for_type(field_ty, self.llvm_ctx)
+  self.builder.createLoad(field_llvm_ty, field_ptr)
 }
 
 ///|
@@ -457,10 +618,22 @@ pub fn Context::codegen_knf_call_expr(
       panic()
     }
     let ty = name_type_map.get(arg_name).unwrap()
-    let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
-    match val.getType().asTypeEnum() {
-      PointerType(_) => self.builder.createLoad(llvm_ty, val)
-      _ => val
+
+    // Arrays and structs are passed by reference (as pointers)
+    // Only load scalar values from pointers (mutable variables)
+    match ty {
+      Array(_) | Defined(_, _) =>
+        // Arrays and structs are always passed as pointers
+        val
+      _ =>
+        // For scalar types, load if it's a pointer (mutable variable)
+        match val.getType().asTypeEnum() {
+          PointerType(_) => {
+            let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+            self.builder.createLoad(llvm_ty, val)
+          }
+          _ => val
+        }
     }
   })
   self.builder.createCall(func, arg_vals)
@@ -502,9 +675,21 @@ pub fn Context::codegen_knf_binary_expr(
     _ => right_val
   }
   match op {
-    Add => self.builder.createAdd(left_val, right_val)
-    Sub => self.builder.createSub(left_val, right_val)
-    Mul => self.builder.createMul(left_val, right_val)
+    Add =>
+      match left_ty {
+        Float | Double => self.builder.createFAdd(left_val, right_val)
+        _ => self.builder.createAdd(left_val, right_val)
+      }
+    Sub =>
+      match left_ty {
+        Float | Double => self.builder.createFSub(left_val, right_val)
+        _ => self.builder.createSub(left_val, right_val)
+      }
+    Mul =>
+      match left_ty {
+        Float | Double => self.builder.createFMul(left_val, right_val)
+        _ => self.builder.createMul(left_val, right_val)
+      }
     Div =>
       match left_ty {
         Int | Int64 => self.builder.createSDiv(left_val, right_val)
@@ -623,9 +808,8 @@ fn codegen_for_type(tykind : TypeKind, llvm_ctx : @IR.Context) -> &@IR.Type {
     Tuple(_) => llvm_ctx.getPtrTy()
     Array(_) => llvm_ctx.getPtrTy()
     Function(_, _) => llvm_ctx.getPtrTy()
-    Defined(_) => {
-      println("codegen for defined type not implemented yet")
-      panic()
-    }
+    Defined(_, _) =>
+      // For structs, we return a pointer type since structs are passed by reference
+      llvm_ctx.getPtrTy()
   }
 }
