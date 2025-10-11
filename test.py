@@ -31,7 +31,16 @@ def main():
         return
 
     # Step 3: List of test files
-    print(f"Running tests for: {', '.join(test_files)}")
+    # print(f"Running tests for: {', '.join(test_files)}")
+    print("Running tests for: ")
+    cnt = 0
+    print("    ")
+    for test_file in test_files:
+        print(f"{test_file}", end=" ")
+        cnt += 1
+        if cnt % 5 == 0:
+            print("    ")
+    print("\n")
 
     for test_file in test_files:
         print(f"--- Testing {test_file} ---")
@@ -57,9 +66,9 @@ def main():
         # Step 5: Compile with clang
         clang_command = f"clang {ll_file} runtime.c -o {executable_file}"
         # remove .ll
+        _, stderr = run_command(clang_command)
         rm_ll_command = f"rm -f {ll_file}"
         run_command(rm_ll_command)
-        _, stderr = run_command(clang_command)
         if "error:" in stderr.lower() or "error[" in stderr.lower():
             print(f"Clang compilation failed for {test_file}")
             print(stderr)
@@ -70,6 +79,7 @@ def main():
         result, stderr = run_command(run_executable_command)
         # remove executable
         rm_executable_command = f"rm -f {executable_file}"
+        run_command(rm_executable_command)
         if stderr:
             print(f"Error running executable for {test_file}")
             print(stderr)
