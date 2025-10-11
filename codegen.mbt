@@ -1,7 +1,5 @@
 ///|
 pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
-  let { llvm_ctx, llvm_mod, .. } = self
-
   // codegen for external functions
   for _, ext_fn in self.knf_ext_funcs {
     self.codegen_knf_ext_func(ext_fn)
@@ -16,7 +14,7 @@ pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
   for _, top_fn in self.knf_top_funcs {
     self.codegen_knf_func(top_fn)
   }
-  llvm_mod
+  self.llvm_mod
 }
 
 ///|
@@ -343,11 +341,11 @@ pub fn Context::codegen_knf_binary_expr(
   name_value_map : Map[Name, &@IR.Value],
   name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
-  guard name_value_map.get(left_name) is Some(left_val_raw) else {
+  guard name_value_map.get(left_name) is Some(left_val) else {
     println("Compiler ICE: variable not found in name_value_map")
     panic()
   }
-  guard name_value_map.get(right_name) is Some(right_val_raw) else {
+  guard name_value_map.get(right_name) is Some(right_val) else {
     println("Compiler ICE: variable not found in name_value_map")
     panic()
   }
@@ -355,19 +353,19 @@ pub fn Context::codegen_knf_binary_expr(
   // Load values if they are pointers (mutable variables)
   let left_ty = name_type_map.get(left_name).unwrap()
   let right_ty = name_type_map.get(right_name).unwrap()
-  let left_val = match left_val_raw.getType().asTypeEnum() {
+  let left_val = match left_val.getType().asTypeEnum() {
     PointerType(_) => {
       let llvm_ty = codegen_for_type(left_ty, self.llvm_ctx)
-      self.builder.createLoad(llvm_ty, left_val_raw)
+      self.builder.createLoad(llvm_ty, left_val)
     }
-    _ => left_val_raw
+    _ => left_val
   }
-  let right_val = match right_val_raw.getType().asTypeEnum() {
+  let right_val = match right_val.getType().asTypeEnum() {
     PointerType(_) => {
       let llvm_ty = codegen_for_type(right_ty, self.llvm_ctx)
-      self.builder.createLoad(llvm_ty, right_val_raw)
+      self.builder.createLoad(llvm_ty, right_val)
     }
-    _ => right_val_raw
+    _ => right_val
   }
   match op {
     Add => self.builder.createAdd(left_val, right_val)
@@ -393,8 +391,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    //Eq => self.builder.createICmpEQ(left_val, right_val)
-    Eq =>
+    Eq => {
       match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpEQ(left_val, right_val)
@@ -405,7 +402,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    NE =>
+    }
+    NE => {
       match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpNE(left_val, right_val)
@@ -416,7 +414,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    LT =>
+    }
+    LT => {
       match left_ty {
         Int | Int64 => self.builder.createICmpSLT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULT(left_val, right_val)
@@ -426,7 +425,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    LE =>
+    }
+    LE => {
       match left_ty {
         Int | Int64 => self.builder.createICmpSLE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULE(left_val, right_val)
@@ -438,7 +438,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    GT =>
+    }
+    GT => {
       match left_ty {
         Int | Int64 => self.builder.createICmpSGT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGT(left_val, right_val)
@@ -448,7 +449,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    GE =>
+    }
+    GE => {
       match left_ty {
         Int | Int64 => self.builder.createICmpSGE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGE(left_val, right_val)
@@ -460,12 +462,13 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
+    }
     And => self.builder.createAnd(left_val, right_val)
     Or => self.builder.createOr(left_val, right_val)
     BitAnd => self.builder.createAnd(left_val, right_val)
     BitOr => self.builder.createOr(left_val, right_val)
     ShiftLeft => self.builder.createShl(left_val, right_val)
-    ShiftRight =>
+    ShiftRight => {
       match left_ty {
         Int | Int64 => self.builder.createAShr(left_val, right_val)
         UInt | UInt64 => self.builder.createLShr(left_val, right_val)
@@ -474,6 +477,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
+    }
   }
 }
 
