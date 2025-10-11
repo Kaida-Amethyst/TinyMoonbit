@@ -324,8 +324,8 @@ pub fn Context::codegen_knf_expr(
       println("codegen for struct get not implemented yet")
       panic()
     }
-    ArrayLiteral(_) => {
-      println("codegen for array literal not implemented yet")
+    ArrayAlloc(_) => {
+      println("codegen for array alloc not implemented yet")
       panic()
     }
     TupleLiteral(_) => {

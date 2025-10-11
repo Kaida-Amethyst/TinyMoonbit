@@ -20,6 +20,11 @@ pub fn Context::parse(self : Self) -> Unit raise ParseError {
       self.top_lets.set(top_let.name, top_let)
       continue rest
     }
+    [{kind: Keyword(Struct), ..}, ..] as tokens => {
+      let (struct_def, rest) = self.parse_struct_def(tokens)
+      self.struct_defs.set(struct_def.name, struct_def)
+      continue rest
+    }
     [{ kind: EOF, .. }, ..] => break
     [] => {
       println("Compiler ICE: Empty Token ArrayView")

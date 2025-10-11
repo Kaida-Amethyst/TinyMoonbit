@@ -30,9 +30,8 @@ pub fn Context::typecheck(self : Self) -> Unit raise TypeCheckError {
 
   // 3. collect all struct definitions TODO
   for struct_def in struct_defs.values() {
-    let { name, fields, .. } = struct_def
-    let field_tys = fields.map(f => f.ty.kind)
-    let sty : TypeKind = Defined(name, field_tys)
+    let { name,.. } = struct_def
+    let sty : TypeKind = Defined(name, [])
     dup_check(name)
     self.type_env.set(name, sty)
   }
@@ -382,7 +381,7 @@ pub fn Context::type_check_struct_construct_expr(
       )
     }
   }
-  TypeKind::Defined(name, struct_fields.map(f => f.ty.kind))
+  TypeKind::Defined(name, [])
 }
 
 ///|

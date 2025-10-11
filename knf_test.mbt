@@ -72,9 +72,20 @@ test "Array Expr Knf Convert" {
     #|  let tmp$2: Int = 3;
     #|  let tmp$3: Int = 4;
     #|  let tmp$4: Int = 5;
-    #|  let a: Array[Int] = [tmp, tmp$1, tmp$2, tmp$3, tmp$4];
-    #|  let tmp$5: Int = 3;
-    #|  a[tmp$5]
+    #|  let tmp$5: Array[Int] = array_alloc Int 5;
+    #|  let tmp$6: Int = 0;
+    #|  tmp$5[tmp$6] = tmp;
+    #|  let tmp$7: Int = 1;
+    #|  tmp$5[tmp$7] = tmp$1;
+    #|  let tmp$8: Int = 2;
+    #|  tmp$5[tmp$8] = tmp$2;
+    #|  let tmp$9: Int = 3;
+    #|  tmp$5[tmp$9] = tmp$3;
+    #|  let tmp$10: Int = 4;
+    #|  tmp$5[tmp$10] = tmp$4;
+    #|  let a: Array[Int] = tmp$5;
+    #|  let tmp$11: Int = 3;
+    #|  a[tmp$11]
     #|}
   inspect(knf_func, content=expected)
 }
@@ -284,4 +295,40 @@ test "For Stmt Knf Convert" {
     #|  sum
     #|}
   inspect(knf_func, content=expected)
+}
+
+test "Struct Knf Convert" {
+  let code =
+    #|struct Point {
+    #|  x: Int
+    #|  y: Int
+    #|}
+    #|
+    #|fn foo() -> Int {
+    #|  let p = Point::{ x: 1, y: 2 }
+    #|  p.x + p.y
+    #|}
+  let ctx = Context::new(code)
+  ctx..tokenize()..parse()..typecheck()..knf_transform()
+  let actual = ctx.print_knf_to_string()
+  let expected = 
+    #|struct Point {
+    #|  x: Int
+    #|  y: Int
+    #|}
+    #|
+    #|fn foo() -> Int {
+    #|  let tmp: Int = 1;
+    #|  let tmp$1: Int = 2;
+    #|  let tmp$2: Point = alloc Point;
+    #|  tmp$2.x = tmp;
+    #|  tmp$2.y = tmp$1;
+    #|  let p: Point = tmp$2;
+    #|  let tmp$3: Int = p.x;
+    #|  let tmp$4: Int = p.y;
+    #|  tmp$3 + tmp$4
+    #|}
+    #|
+    #|
+  inspect(actual, content=expected)
 }

@@ -68,18 +68,25 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
 
 ///|
 pub fn Context::print_knf(self : Self) -> Unit {
+  let s = self.print_knf_to_string()
+  println(s)
+}
+
+pub fn Context::print_knf_to_string(self : Self) -> String {
+  let sb = StringBuilder::new()
   for top_let in self.knf_top_lets.values() {
-    println(top_let)
-    println("")
+    sb.write_string("\{top_let}\n\n")
+  }
+  for struct_def in self.knf_struct_defs.values() {
+    sb.write_string("\{struct_def}\n\n")
   }
   for ext_func in self.knf_ext_funcs.values() {
-    println(ext_func)
-    println("")
+    sb.write_string("\{ext_func}\n\n")
   }
   for top_func in self.knf_top_funcs.values() {
-    println(top_func)
-    println("")
+    sb.write_string("\{top_func}\n\n")
   }
+  sb.to_string()
 }
 
 ///|

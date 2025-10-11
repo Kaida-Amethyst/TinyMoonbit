@@ -65,6 +65,11 @@ pub fn Context::knf_transform(self : Self) -> Unit {
 
   }
   // 3. collect all struct def and enum def TODO
+  for struct_name, struct_def in self.struct_defs {
+    self.name_env.set(struct_name, Name::{ id: struct_name, slot: 0 })
+    let _ = self.top_struct_def_to_knf(struct_def)
+
+  }
   // 4. convert all top function to knf function
   // Note: need add functions name first
   for fname, _ in self.top_functions {
@@ -161,10 +166,14 @@ pub fn KnfStructDef::stringify(self : KnfStructDef) -> String {
     if is_mut {
       sb.write_string("mut ")
     }
-    sb.write_string("\{field_name}: \{field_ty},\n")
+    sb.write_string("\{field_name}: \{field_ty}\n")
   }
   sb.write_string("}")
   sb.to_string()
+}
+
+pub impl Show for KnfStructDef with output(self, logger) {
+  logger.write_string(self.stringify())
 }
 
 ///|
@@ -798,13 +807,14 @@ pub fn Context::field_access_left_value_to_knf(
     panic()
   }
   let field_ty = field.ty.kind
-  stmts.push(
+  let stmt = 
     KnfStmt::Let(
       result_name,
       field_ty,
       KnfExpr::StructGet(obj_knf_name, field_name),
-    ),
-  )
+    )
+
+  stmts.push(stmt)
   (stmts, result_name)
 }
 
@@ -933,11 +943,11 @@ pub fn KnfStmt::stringify(self : KnfStmt, ident? : Int = 0) -> String {
     KnfStmt::Assign(name, expr) => sb.write_string("\{name.id} = \{expr};")
     KnfStmt::ArrayPut(array_name, index_name, expr) =>
       sb.write_string(
-        "\{array_name.id}[\{index_name.id}] = \{expr.stringify(ident~)};",
+        "\{array_name}[\{index_name}] = \{expr.stringify(ident~)};",
       )
     KnfStmt::StructSet(struct_name, field_name, expr) =>
       sb.write_string(
-        "\{struct_name.id}.\{field_name} = \{expr.stringify(ident~)};",
+        "\{struct_name}.\{field_name} = \{expr.stringify(ident~)};",
       )
     KnfStmt::While(cond, body) => {
       if cond.stmts.length() < 2 {
@@ -982,8 +992,8 @@ pub(all) enum KnfExpr {
   TupleGet(Name, Int)
   CreateStruct(String)
   StructGet(Name, String)
-  ArrayLiteral(Array[Name])
   TupleLiteral(Array[Name])
+  ArrayAlloc(TypeKind, Int)
 }
 
 ///|
@@ -1329,11 +1339,39 @@ pub fn Context::atom_expr_to_knf(
     Array(elements) => {
       let (element_stmts, element_names) = self.multiple_exprs_to_knf(elements)
       stmts.append(element_stmts)
-      KnfExpr::ArrayLiteral(element_names)
+      guard elements is [{ ty: Some(elem_ty), .. }, ..] else {
+        println("Compiler ICE: Array elements must have type.")
+        panic()
+      }
+      let array_expr = KnfExpr::ArrayAlloc(elem_ty, elements.length())
+      let array_name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(array_name, Defined("Array", [elem_ty]), array_expr))
+      for i in 0..<element_names.length() {
+        let elem_name = element_names[i]
+        let idx_name = self.new_name("tmp")
+        stmts.push(KnfStmt::Let(idx_name, Int, KnfExpr::Int(i)))
+        stmts.push(KnfStmt::ArrayPut(array_name, idx_name, KnfExpr::Ident(elem_name)))
+      }
+      KnfExpr::Ident(array_name)
     }
-    StructConstruct(_) => {
-      println("Unimplemented yet")
-      panic()
+    StructConstruct(struct_name, items) => {
+      guard self.struct_defs.get(struct_name) is Some(struct_def) else {
+        println("Compiler ICE: Struct definition not found.")
+        panic()
+      }
+      let field_names = struct_def.fields.map(f => f.name)
+      let elements = items.map(item => item.1)
+      let (element_stmts, element_names) = self.multiple_exprs_to_knf(elements)
+      stmts.append(element_stmts)
+      let struct_expr = KnfExpr::CreateStruct(struct_name)
+      let var_name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(var_name, Defined(struct_name.to_string(), []), struct_expr))
+      for i in 0..<element_names.length() {
+        let field_name = field_names[i]
+        let elem_name = element_names[i]
+        stmts.push(KnfStmt::StructSet(var_name, field_name, KnfExpr::Ident(elem_name)))
+      }
+      KnfExpr::Ident(var_name)
     }
   }
   (stmts, e)
@@ -1438,10 +1476,7 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
     ArrayGet(array_name, index_name) => "\{array_name}[\{index_name}]"
     TupleGet(tuple_name, index) => "\{tuple_name}.\{index}"
     StructGet(struct_name, field_name) => "\{struct_name}.\{field_name}"
-    ArrayLiteral(elements) => {
-      let elements_str = elements.map(e => e.to_string()).join(", ")
-      "[\{elements_str}]"
-    }
+    ArrayAlloc(elem_ty, size) => "array_alloc \{elem_ty} \{size}"
     TupleLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "(\{elements_str})"
