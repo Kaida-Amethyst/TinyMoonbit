@@ -10,6 +10,6 @@ fn sum(start: Int, end: Int, step: Int) -> Int {
 }
 
 fn main {
-  let result = sum(1, 2, 3, 4, 5)
+  let result = sum(1, 100, 1)
   print_int(result)
 }

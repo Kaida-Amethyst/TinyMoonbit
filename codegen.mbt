@@ -128,9 +128,52 @@ pub fn Context::codegen_knf_stmt(
       let _ = self.codegen_knf_expr(expr, name_value_map, name_type_map)
 
     }
-    While(_, _) => {
-      println("codegen for while not implemented yet")
-      panic()
+    While(cond_block, body_block) => {
+      // Get the current function
+      let curr_bb = self.builder.getInsertBlock()
+      let func = curr_bb.getParent()
+
+      // Create basic blocks for while loop
+      let cond_bb = func.addBasicBlock()
+      let body_bb = func.addBasicBlock()
+      let exit_bb = func.addBasicBlock()
+
+      // Jump to condition block
+      let _ = self.builder.createBr(cond_bb)
+
+      // Generate condition block
+      self.builder.setInsertPoint(cond_bb)
+      // Evaluate the condition expression
+      let cond_val = self.codegen_knf_block(
+        cond_block, name_value_map, name_type_map,
+      )
+
+      // The condition value should be the final expression of the condition block
+      match cond_val {
+        Some(cv) => {
+          // Create conditional branch based on condition result
+          let _ = self.builder.createCondBr(cv, body_bb, exit_bb)
+
+        }
+        None => {
+          // If no condition value, this is an error
+          println("Compiler ICE: While condition must return a boolean value")
+          panic()
+        }
+      }
+
+      // Generate body block
+      self.builder.setInsertPoint(body_bb)
+      let _ = self.codegen_knf_block(body_block, name_value_map, name_type_map)
+      // After body, jump back to condition
+      let body_end_bb = self.builder.getInsertBlock()
+      if body_end_bb.getTerminator().is_empty() {
+        let _ = self.builder.createBr(cond_bb)
+
+      }
+
+      // Move to exit block for subsequent code
+      self.builder.setInsertPoint(exit_bb)
     }
     StructSet(_) => {
       println("codegen for struct set not implemented yet")
@@ -316,12 +359,11 @@ pub fn Context::codegen_knf_expr(
           phi.addIncoming(ev, else_end_bb)
           (phi : &@IR.Value) // Cast PHINode to Value
         }
-        _ => {
+        _ =>
           // One or both branches don't return a value (Unit type)
           // Return a dummy value since we need to return something
           // This should only happen when the if expression is used for side effects
           (self.llvm_ctx.getConstInt32(0) : &@IR.Value)
-        }
       }
     }
     ArrayGet(_) => {
@@ -425,7 +467,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    Eq => {
+    Eq =>
       match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpEQ(left_val, right_val)
@@ -436,8 +478,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    NE => {
+    NE =>
       match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpNE(left_val, right_val)
@@ -448,8 +489,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    LT => {
+    LT =>
       match left_ty {
         Int | Int64 => self.builder.createICmpSLT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULT(left_val, right_val)
@@ -459,8 +499,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    LE => {
+    LE =>
       match left_ty {
         Int | Int64 => self.builder.createICmpSLE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULE(left_val, right_val)
@@ -472,8 +511,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    GT => {
+    GT =>
       match left_ty {
         Int | Int64 => self.builder.createICmpSGT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGT(left_val, right_val)
@@ -483,8 +521,7 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    GE => {
+    GE =>
       match left_ty {
         Int | Int64 => self.builder.createICmpSGE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGE(left_val, right_val)
@@ -496,13 +533,12 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
     And => self.builder.createAnd(left_val, right_val)
     Or => self.builder.createOr(left_val, right_val)
     BitAnd => self.builder.createAnd(left_val, right_val)
     BitOr => self.builder.createOr(left_val, right_val)
     ShiftLeft => self.builder.createShl(left_val, right_val)
-    ShiftRight => {
+    ShiftRight =>
       match left_ty {
         Int | Int64 => self.builder.createAShr(left_val, right_val)
         UInt | UInt64 => self.builder.createLShr(left_val, right_val)
@@ -511,7 +547,6 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
   }
 }
 
