@@ -188,3 +188,14 @@ fn Context::get_code_line(self : Self, lineno : Int) -> String {
   }
   sb.to_string()
 }
+
+///|
+pub fn compile(code: String, source_file? : String = "demo") -> @IR.Module raise {
+  let ctx = Context::new(code, source_file~)
+  ctx..tokenize()
+     ..parse()
+     ..typecheck()
+     ..knf_transform()
+     
+  ctx.llvm_codegen()
+}
