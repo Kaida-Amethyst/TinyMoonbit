@@ -568,7 +568,9 @@ pub fn Context::parse_extern_function(
     (tokens[1:], next_tok.lineno, next_tok.column)
   } else {
     guard next_tok.lineno > lineno else {
-      raise ParseError((next_tok, "Expect ';' or new line after extern function"))
+      raise ParseError(
+        (next_tok, "Expect ';' or new line after extern function"),
+      )
     }
     (tokens, lineno, column)
   }
