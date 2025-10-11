@@ -30,6 +30,7 @@ pub struct Context {
   llvm_mod : @IR.Module
   builder : @IR.IRBuilder
   llvm_funcs : Map[String, @IR.Function]
+  llvm_struct_tys: Map[String, @IR.StructType]
   llvm_global_values : Map[String, &@IR.GlobalValue]
 
   //
@@ -58,6 +59,7 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     knf_top_funcs: Map::new(),
     knf_struct_defs: Map::new(),
     llvm_funcs: Map::new(),
+    llvm_struct_tys: Map::new(),
     llvm_global_values: Map::new(),
     llvm_ctx,
     llvm_mod,

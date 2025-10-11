@@ -1,5 +1,10 @@
 ///|
 pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
+  // codegen for struct types
+  for _, struct_def in self.knf_struct_defs {
+    self.codegen_knf_struct_def(struct_def)
+  }
+
   // codegen for external functions
   for _, ext_fn in self.knf_ext_funcs {
     self.codegen_knf_ext_func(ext_fn)
@@ -15,6 +20,18 @@ pub fn Context::llvm_codegen(self : Self) -> @IR.Module raise {
     self.codegen_knf_func(top_fn)
   }
   self.llvm_mod
+}
+
+///|
+pub fn Context::codegen_knf_struct_def(self : Self, struct_def : KnfStructDef) -> Unit raise {
+  let { llvm_ctx, .. } = self
+  let field_tys = struct_def.fields.map(f => {
+    let (_, _, field_ty) = f
+    codegen_for_type(field_ty, llvm_ctx)
+  })
+  let struct_name = struct_def.name.to_string()
+  let struct_ty = llvm_ctx.getStructType(field_tys, name=struct_def.name.to_string())
+  self.llvm_struct_tys.set(struct_name, struct_ty)
 }
 
 ///|
@@ -312,17 +329,20 @@ pub fn Context::codegen_knf_expr(
       self.codegen_knf_call_expr(
         fname, arg_names, name_value_map, name_type_map,
       )
-    CreateStruct(_) => {
-      println("codegen for create struct not implemented yet")
-      panic()
+    CreateStruct(struct_name) => {
+      guard self.llvm_struct_tys.get(struct_name) is Some(struct_ty) else {
+        println("Compiler ICE: struct type not found in llvm_struct_tys")
+        panic()
+      }
+      let struct_ptr = self.builder.createAlloca(struct_ty)
+      (struct_ptr : &@IR.Value)
     }
     TupleGet(_) => {
       println("codegen for tuple get not implemented yet")
       panic()
     }
-    StructGet(_) => {
-      println("codegen for struct get not implemented yet")
-      panic()
+    StructGet(obj_name, field_name) => {
+      self.codegen_for_struct_get(obj_name, field_name, name_value_map, name_type_map)
     }
     ArrayAlloc(_) => {
       println("codegen for array alloc not implemented yet")
@@ -333,6 +353,21 @@ pub fn Context::codegen_knf_expr(
       panic()
     }
   }
+}
+
+pub fn Context::codegen_for_struct_get(
+  self: Self,
+  obj_name: Name, 
+  field_name: String,
+  name_value_map: Map[Name, &@IR.Value],
+  name_type_map: Map[Name, TypeKind]
+) -> &@IR.Value raise {
+  ignore(self)
+  ignore(obj_name)
+  ignore(field_name)
+  ignore(name_value_map)
+  ignore(name_type_map)
+  ...
 }
 
 ///|
