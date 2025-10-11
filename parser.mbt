@@ -2052,6 +2052,11 @@ pub struct StructDef {
 } derive(Show, Eq)
 
 ///|
+pub fn StructDef::get_field(self: Self, name: String) -> StructField? {
+  self.fields.iter().find_first(f => f.name == name)
+}
+
+///|
 pub fn Context::parse_struct_def(
   self : Self,
   tokens : ArrayView[Token],
@@ -2100,6 +2105,10 @@ pub fn Context::parse_struct_def(
     }
     tokens => {
       let (field, rest) = self.parse_struct_field(tokens)
+      // need check duplicated field names
+      if fields.iter().any(f => f.name == field.name) {
+        raise ParseError((tokens[0], "Duplicated field name in struct"))
+      }
       fields.push(field)
       if rest is [{ kind: SemiColon, .. }, .. tokens] {
         continue tokens

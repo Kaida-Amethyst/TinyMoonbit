@@ -3,7 +3,7 @@ pub suberror TypeCheckError String derive(Show)
 
 ///|
 pub fn Context::typecheck(self : Self) -> Unit raise TypeCheckError {
-  let { top_lets, extern_functions, top_functions, .. } = self
+  let { top_lets, extern_functions, top_functions, struct_defs, .. } = self
   // 1. collect all function signatures
   let dup_container = Set::new()
   fn dup_check(name : String) -> Unit raise TypeCheckError {
@@ -29,6 +29,13 @@ pub fn Context::typecheck(self : Self) -> Unit raise TypeCheckError {
   }
 
   // 3. collect all struct definitions TODO
+  for struct_def in struct_defs.values() {
+    let { name, fields, .. } = struct_def
+    let field_tys = fields.map(f => f.ty.kind)
+    let sty : TypeKind = Defined(name, field_tys)
+    dup_check(name)
+    self.type_env.set(name, sty)
+  }
   // 4. collect all enum definitions TODO
 
   // 5. collect all function definitions' signatures
@@ -300,9 +307,7 @@ pub fn Context::type_check_atom_expr(
       TypeKind::Array(first_ty)
     }
     StructConstruct(name, fields) => {
-      ignore(name)
-      ignore(fields)
-      ...
+      self.type_check_struct_construct_expr(name, fields)
     }
   }
   atom.ty = Some(ty)
@@ -326,18 +331,64 @@ pub fn Context::type_check_array_access_expr(
   elem_ty
 }
 
-// TODO: implement field access type checking when structs are supported
-
 ///|
 pub fn Context::type_check_field_access_expr(
   self : Self,
   obj : ApplyExpr,
   field : String,
 ) -> TypeKind raise TypeCheckError {
-  ignore(self)
-  ignore(obj)
-  ignore(field)
-  ...
+  let { struct_defs, .. } = self
+  let obj_ty = self.type_check_apply_expr(obj)
+  let obj_name = match obj_ty {
+    TypeKind::Defined(name, _) => name
+    _ => {
+      raise TypeCheckError("type mismatch: expected struct type, got \{obj_ty}")
+    }
+  }
+  guard struct_defs.get(obj_name) is Some(struct_obj) else {
+    raise TypeCheckError("undefined struct type: \{obj_name}")
+  }
+
+  //let field = struct_obj.get_field(field)
+  guard struct_obj.get_field(field) is Some(field) else {
+    raise TypeCheckError(
+      "undefined field \{field} in struct \{obj_name}",
+    )
+  }
+  field.ty.kind
+}
+
+///|
+pub fn Context::type_check_struct_construct_expr(
+  self : Self,
+  name : String,
+  fields : Array[(String, Expr)],
+) -> TypeKind raise TypeCheckError {
+  let { struct_defs, .. } = self
+  guard struct_defs.get(name) is Some(struct_obj) else {
+    raise TypeCheckError("undefined struct type: \{name}")
+  }
+  let struct_fields = struct_obj.fields
+  guard struct_fields.length() == fields.length() else {
+    raise TypeCheckError(
+      "field count mismatch in struct \{name}: expected \{struct_fields.length()}, got \{fields.length()}",
+    )
+  }
+  for field in fields {
+    let (field_name, expr) = field
+    guard struct_obj.get_field(field_name) is Some(field_def) else {
+      raise TypeCheckError(
+        "undefined field \{field_name} in struct \{name}",
+      )
+    }
+    let expr_ty = self.type_check_expr(expr)
+    guard expr_ty == field_def.ty.kind else {
+      raise TypeCheckError(
+        "type mismatch in field \{field_name} of struct \{name}: expected \{field_def.ty.kind}, got \{expr_ty}",
+      )
+    }
+  }
+  TypeKind::Defined(name, struct_fields.map(f => f.ty.kind))
 }
 
 ///|
@@ -467,9 +518,30 @@ pub fn Context::type_check_left_value(
       elem_ty
     }
     FieldAccess(obj, field) => {
-      ignore(obj)
-      ignore(field)
-      ...
+      let { struct_defs, .. } = self
+      let obj_ty = self.type_check_left_value(obj)
+      let obj_name = match obj_ty {
+        TypeKind::Defined(name, _) => name
+        _ => {
+          raise TypeCheckError(
+            "type mismatch in left value: expected struct type, got \{obj_ty}",
+          )
+        }
+      }
+      guard struct_defs.get(obj_name) is Some(struct_obj) else {
+        raise TypeCheckError("undefined struct type: \{obj_name}")
+      }
+      guard struct_obj.get_field(field) is Some(field) else {
+        raise TypeCheckError(
+          "undefined field \{field} in struct \{obj_name}",
+        )
+      }
+      guard field.is_mut else {
+        raise TypeCheckError(
+          "cannot assign to immutable field \{field} in struct \{obj_name}",
+        )
+      }
+      field.ty.kind
     }
   }
   lv.ty = Some(ty)
