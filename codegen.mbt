@@ -62,9 +62,10 @@ pub fn Context::codegen_knf_func(
   let fval = self.llvm_funcs.get(top_fn.name).unwrap()
   let { name_value_map, name_type_map, .. } = top_fn
   for i, pair in top_fn.params {
-    let (name, _) = pair
+    let (name, ty) = pair
     let llvm_param = fval.getArg(i).unwrap()
     name_value_map.set(name, llvm_param)
+    name_type_map.set(name, ty)
   }
   let entry_bb = fval.addBasicBlock(name="entry")
   builder.setInsertPoint(entry_bb)
@@ -76,7 +77,6 @@ pub fn Context::codegen_knf_func(
     Unit => ()
     e => {
       let ret_val = self.codegen_knf_expr(e, name_value_map, name_type_map)
-      println(ret_val)
       if !(ret_val.getType().asTypeEnum() is VoidType(_)) {
         let _ = builder.createRet(ret_val)
 
@@ -151,6 +151,33 @@ pub fn Context::codegen_knf_stmt(
 }
 
 ///|
+pub fn Context::codegen_knf_block(
+  self : Self,
+  block : KnfBlock,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
+) -> &@IR.Value? raise {
+  // Generate all statements in the block
+  for stmt in block.stmts {
+    self.codegen_knf_stmt(stmt, name_value_map, name_type_map)
+  }
+
+  // Generate the final expression and return its value
+  match block.final_expr {
+    Unit => None // No value to return for Unit type
+    expr => {
+      let val = self.codegen_knf_expr(expr, name_value_map, name_type_map)
+      // Check if the value is actually void type
+      if val.getType().asTypeEnum() is VoidType(_) {
+        None
+      } else {
+        Some(val)
+      }
+    }
+  }
+}
+
+///|
 pub fn Context::codegen_knf_expr(
   self : Self,
   expr : KnfExpr,
@@ -201,9 +228,69 @@ pub fn Context::codegen_knf_expr(
       println("codegen for neg expression not implemented yet")
       panic()
     }
-    If(_, _, _) => {
-      println("codegen for if expression not implemented yet")
-      panic()
+    If(cond_expr, then_block, else_block) => {
+      // Evaluate the condition
+      let cond_val = self.codegen_knf_expr(
+        cond_expr, name_value_map, name_type_map,
+      )
+
+      // Get the current function
+      let curr_bb = self.builder.getInsertBlock()
+      let func = curr_bb.getParent()
+
+      // Create basic blocks for then, else, and merge
+      let then_bb = func.addBasicBlock()
+      let else_bb = func.addBasicBlock()
+      let merge_bb = func.addBasicBlock()
+
+      // Create conditional branch
+      let _ = self.builder.createCondBr(cond_val, then_bb, else_bb)
+
+      // Generate then block
+      self.builder.setInsertPoint(then_bb)
+      let then_val = self.codegen_knf_block(
+        then_block, name_value_map, name_type_map,
+      )
+      // Get the block we ended up in (might be different due to nested control flow)
+      let then_end_bb = self.builder.getInsertBlock()
+      // Only create branch if the block doesn't already have a terminator
+      if then_end_bb.getTerminator().is_empty() {
+        let _ = self.builder.createBr(merge_bb)
+
+      }
+
+      // Generate else block
+      self.builder.setInsertPoint(else_bb)
+      let else_val = self.codegen_knf_block(
+        else_block, name_value_map, name_type_map,
+      )
+      // Get the block we ended up in
+      let else_end_bb = self.builder.getInsertBlock()
+      // Only create branch if the block doesn't already have a terminator
+      if else_end_bb.getTerminator().is_empty() {
+        let _ = self.builder.createBr(merge_bb)
+
+      }
+
+      // Move to merge block
+      self.builder.setInsertPoint(merge_bb)
+
+      // If both branches return values (not Unit/void), create a PHI node
+      match (then_val, else_val) {
+        (Some(tv), Some(ev)) => {
+          // Both branches return values, create PHI node
+          let phi = self.builder.createPHI(tv.getType())
+          phi.addIncoming(tv, then_end_bb)
+          phi.addIncoming(ev, else_end_bb)
+          (phi : &@IR.Value) // Cast PHINode to Value
+        }
+        _ => {
+          // One or both branches don't return a value (Unit type)
+          // Return a dummy value since we need to return something
+          // This should only happen when the if expression is used for side effects
+          (self.llvm_ctx.getConstInt32(0) : &@IR.Value)
+        }
+      }
     }
     ArrayGet(_) => {
       println("codegen for array get not implemented yet")
@@ -256,24 +343,38 @@ pub fn Context::codegen_knf_binary_expr(
   name_value_map : Map[Name, &@IR.Value],
   name_type_map : Map[Name, TypeKind],
 ) -> &@IR.Value raise {
-  guard name_value_map.get(left_name) is Some(left_val) else {
+  guard name_value_map.get(left_name) is Some(left_val_raw) else {
     println("Compiler ICE: variable not found in name_value_map")
     panic()
   }
-  guard name_value_map.get(right_name) is Some(right_val) else {
+  guard name_value_map.get(right_name) is Some(right_val_raw) else {
     println("Compiler ICE: variable not found in name_value_map")
     panic()
+  }
+
+  // Load values if they are pointers (mutable variables)
+  let left_ty = name_type_map.get(left_name).unwrap()
+  let right_ty = name_type_map.get(right_name).unwrap()
+  let left_val = match left_val_raw.getType().asTypeEnum() {
+    PointerType(_) => {
+      let llvm_ty = codegen_for_type(left_ty, self.llvm_ctx)
+      self.builder.createLoad(llvm_ty, left_val_raw)
+    }
+    _ => left_val_raw
+  }
+  let right_val = match right_val_raw.getType().asTypeEnum() {
+    PointerType(_) => {
+      let llvm_ty = codegen_for_type(right_ty, self.llvm_ctx)
+      self.builder.createLoad(llvm_ty, right_val_raw)
+    }
+    _ => right_val_raw
   }
   match op {
     Add => self.builder.createAdd(left_val, right_val)
     Sub => self.builder.createSub(left_val, right_val)
     Mul => self.builder.createMul(left_val, right_val)
-    Div => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    Div =>
+      match left_ty {
         Int | Int64 => self.builder.createSDiv(left_val, right_val)
         UInt | UInt64 => self.builder.createUDiv(left_val, right_val)
         Float => self.builder.createFDiv(left_val, right_val)
@@ -283,13 +384,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    Mod => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    Mod =>
+      match left_ty {
         Int | Int64 => self.builder.createSRem(left_val, right_val)
         UInt | UInt64 => self.builder.createURem(left_val, right_val)
         _ => {
@@ -297,14 +393,9 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
     //Eq => self.builder.createICmpEQ(left_val, right_val)
-    Eq => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    Eq =>
+      match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpEQ(left_val, right_val)
         Float | Double => self.builder.createFCmpUEQ(left_val, right_val)
@@ -314,13 +405,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    NE => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    NE =>
+      match left_ty {
         Int | Int64 | UInt | UInt64 =>
           self.builder.createICmpNE(left_val, right_val)
         Float | Double => self.builder.createFCmpUNE(left_val, right_val)
@@ -330,13 +416,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    LT => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    LT =>
+      match left_ty {
         Int | Int64 => self.builder.createICmpSLT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULT(left_val, right_val)
         Float | Double => self.builder.createFCmpULT(left_val, right_val)
@@ -345,13 +426,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    LE => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    LE =>
+      match left_ty {
         Int | Int64 => self.builder.createICmpSLE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpULE(left_val, right_val)
         Float | Double => self.builder.createFCmpULE(left_val, right_val)
@@ -362,13 +438,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    GT => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    GT =>
+      match left_ty {
         Int | Int64 => self.builder.createICmpSGT(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGT(left_val, right_val)
         Float | Double => self.builder.createFCmpUGT(left_val, right_val)
@@ -377,13 +448,8 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
-    GE => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    GE =>
+      match left_ty {
         Int | Int64 => self.builder.createICmpSGE(left_val, right_val)
         UInt | UInt64 => self.builder.createICmpUGE(left_val, right_val)
         Float | Double => self.builder.createFCmpUGE(left_val, right_val)
@@ -394,18 +460,13 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
     And => self.builder.createAnd(left_val, right_val)
     Or => self.builder.createOr(left_val, right_val)
     BitAnd => self.builder.createAnd(left_val, right_val)
     BitOr => self.builder.createOr(left_val, right_val)
     ShiftLeft => self.builder.createShl(left_val, right_val)
-    ShiftRight => {
-      guard name_type_map.get(left_name) is Some(ty) else {
-        println("Compiler ICE: variable type not found in name_type_map")
-        panic()
-      }
-      match ty {
+    ShiftRight =>
+      match left_ty {
         Int | Int64 => self.builder.createAShr(left_val, right_val)
         UInt | UInt64 => self.builder.createLShr(left_val, right_val)
         _ => {
@@ -413,7 +474,6 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
-    }
   }
 }
 

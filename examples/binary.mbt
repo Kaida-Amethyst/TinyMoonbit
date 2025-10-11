@@ -1,5 +1,4 @@
-
-extern fn print_int(i: Int) -> Unit = "print_int"
+extern fn print_int(i: Int) -> Unit = "print_int";
 
 fn foo(a: Int, b: Int, c: Int, d: Int) -> Int {
   let t = a + b
