@@ -133,7 +133,36 @@ pub impl Show for KnfTopLet with output(self, logger) {
 ///|
 pub(all) struct KnfStructDef {
   name : String
-  fields : Array[(String, TypeKind)]
+  // field name, is_mut, field type
+  fields : Array[(String, Bool, TypeKind)]
+}
+
+pub fn Context::top_struct_def_to_knf(
+  self : Self,
+  struct_def : StructDef,
+) -> KnfStructDef {
+  let fields : Array[(String, Bool, TypeKind)] = Array::new()
+  for field in struct_def.fields {
+    fields.push((field.name, field.is_mut, field.ty.kind))
+  }
+  let knf_struct = KnfStructDef::{ name: struct_def.name, fields }
+  self.knf_struct_defs.set(struct_def.name, knf_struct)
+  knf_struct
+}
+
+pub fn KnfStructDef::stringify(self : KnfStructDef) -> String {
+  let sb = StringBuilder::new()
+  sb.write_string("struct \{self.name} {\n")
+  for field in self.fields {
+    let (field_name, is_mut, field_ty) = field
+    sb.write_string("  ")
+    if is_mut {
+      sb.write_string("mut ")
+    }
+    sb.write_string("\{field_name}: \{field_ty},\n")
+  }
+  sb.write_string("}")
+  sb.to_string()
 }
 
 ///|
@@ -659,7 +688,11 @@ pub fn Context::assign_stmt_to_knf(
       stmts.push(KnfStmt::Let(tmp_idx_name, ty, expr_knf))
       stmts.push(KnfStmt::ArrayPut(left_value_knf_name, tmp_idx_name, expr_knf))
     }
-    FieldAccess(_) => abort("Unimplemented yet")
+    FieldAccess(obj_left_value, field_name) => {
+      let (obj_stmts, obj_knf_name) = self.left_value_to_knf(obj_left_value)
+      stmts.append(obj_stmts)
+      stmts.push(KnfStmt::StructSet(obj_knf_name, field_name, expr_knf))
+    }
   }
   stmts
 }
@@ -675,49 +708,99 @@ pub fn Context::left_value_to_knf(
       (Array::new(), name)
     }
     ArrayAccess(arr_left_value, index_expr) => {
-      let (arr_stmts, arr_knf_name) = self.left_value_to_knf(arr_left_value)
-      let (index_stmts, index_knf) = self.expr_to_knf(index_expr)
-      let stmts = Array::new()
-      stmts..append(arr_stmts)..append(index_stmts)
-      let index_name = match index_knf {
-        Ident(name) => name
-        _ => {
-          guard index_expr.ty is Some(ty) else {
-            println(
-              "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
-            )
-            panic()
-          }
-          let name = self.new_name("tmp")
-          stmts.push(KnfStmt::Let(name, ty, index_knf))
-          name
-        }
-      }
-      let result_name = self.new_name("tmp")
-      guard arr_left_value.ty is Some(ty) else {
+      self.array_access_left_value_to_knf(arr_left_value, index_expr)
+    }
+    FieldAccess(inner_left, field_name) => {
+      self.field_access_left_value_to_knf(inner_left, field_name)
+    }
+  }
+}
+
+pub fn Context::array_access_left_value_to_knf(
+  self: Self,
+  arr_left_value: LeftValue,
+  index_expr: Expr
+) -> (Array[KnfStmt], Name) {
+  let (arr_stmts, arr_knf_name) = self.left_value_to_knf(arr_left_value)
+  let (index_stmts, index_knf) = self.expr_to_knf(index_expr)
+  let stmts = Array::new()
+  stmts..append(arr_stmts)..append(index_stmts)
+  let index_name = match index_knf {
+    Ident(name) => name
+    _ => {
+      guard index_expr.ty is Some(ty) else {
         println(
-          "Compiler ICE: Left value must have been inferred type in Type Checking phase.",
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
         )
         panic()
       }
-      guard ty is Array(elem_ty) else {
-        println("Compiler ICE: Left value must be an array type.")
-        panic()
-      }
-      stmts.push(
-        KnfStmt::Let(
-          result_name,
-          elem_ty,
-          KnfExpr::ArrayGet(arr_knf_name, index_name),
-        ),
-      )
-      (stmts, result_name)
-    }
-    FieldAccess(_) => {
-      println("Unimplemented yet")
-      panic()
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, index_knf))
+      name
     }
   }
+  let result_name = self.new_name("tmp")
+  guard arr_left_value.ty is Some(ty) else {
+    println(
+      "Compiler ICE: Left value must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  guard ty is Array(elem_ty) else {
+    println("Compiler ICE: Left value must be an array type.")
+    panic()
+  }
+  stmts.push(
+    KnfStmt::Let(
+      result_name,
+      elem_ty,
+      KnfExpr::ArrayGet(arr_knf_name, index_name),
+    ),
+  )
+  (stmts, result_name)
+}
+
+///|
+pub fn Context::field_access_left_value_to_knf(
+  self: Self,
+  obj_left_value: LeftValue,
+  field_name: String
+) -> (Array[KnfStmt], Name) {
+  let (obj_stmts, obj_knf_name) = self.left_value_to_knf(obj_left_value)
+  let stmts = Array::new()
+  stmts..append(obj_stmts)
+  let result_name = self.new_name("tmp")
+  guard obj_left_value.ty is Some(ty) else {
+    println(
+      "Compiler ICE: Left value must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  guard ty is Defined(struct_name, _) else {
+    println("Compiler ICE: Left value must be a struct type.")
+    panic()
+  }
+  guard self.struct_defs.get(struct_name) is Some(struct_def) else {
+    println("Compiler ICE: Struct definition not found.")
+    panic()
+  }
+  guard struct_def.fields.iter().any(f => f.name == field_name) else {
+    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+    panic()
+  }
+  guard struct_def.get_field(field_name) is Some(field) else {
+    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+    panic()
+  }
+  let field_ty = field.ty.kind
+  stmts.push(
+    KnfStmt::Let(
+      result_name,
+      field_ty,
+      KnfExpr::StructGet(obj_knf_name, field_name),
+    ),
+  )
+  (stmts, result_name)
 }
 
 ///|
@@ -893,6 +976,7 @@ pub(all) enum KnfExpr {
   ArrayGet(Name, Name)
   TupleGet(Name, Int)
   CreateStruct(String)
+  StructGet(Name, String)
   ArrayLiteral(Array[Name])
   TupleLiteral(Array[Name])
 }
@@ -1054,10 +1138,37 @@ pub fn Context::field_access_to_knf(
   struct_expr : ApplyExpr,
   field_name : String,
 ) -> (Array[KnfStmt], KnfExpr) {
-  ignore(self)
-  ignore(struct_expr)
-  ignore(field_name)
-  ...
+  let (struct_stmts, struct_knf) = self.apply_expr_to_knf(struct_expr)
+  let stmts = Array::new()
+  stmts..append(struct_stmts)
+  guard struct_expr.ty is Some(ty) else {
+    println(
+      "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  guard ty is Defined(struct_name, _) else {
+    println("Compiler ICE: Expression must be a struct type.")
+    panic()
+  }
+  guard self.struct_defs.get(struct_name) is Some(struct_def) else {
+    println("Compiler ICE: Struct definition not found.")
+    panic()
+  }
+  guard struct_def.get_field(field_name) is Some({ty, ..}) else {
+    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+    panic()
+  }
+  let acc_name = match struct_knf {
+    Ident(name) => name
+    _ => {
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty.kind, struct_knf))
+      name
+    }
+  }
+  let acc_expr = KnfExpr::StructGet(acc_name, field_name)
+  (stmts, acc_expr)
 }
 
 ///|
@@ -1319,6 +1430,7 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
     }
     ArrayGet(array_name, index_name) => "\{array_name}[\{index_name}]"
     TupleGet(tuple_name, index) => "\{tuple_name}.\{index}"
+    StructGet(struct_name, field_name) => "\{struct_name}.\{field_name}"
     ArrayLiteral(elements) => {
       let elements_str = elements.map(e => e.to_string()).join(", ")
       "[\{elements_str}]"
@@ -1337,7 +1449,7 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
         "if \{cond_str} \{then_str} else \{else_str}"
       }
     }
-    CreateStruct(struct_name) => "new \{struct_name}"
+    CreateStruct(struct_name) => "alloc \{struct_name}"
   }
 }
 

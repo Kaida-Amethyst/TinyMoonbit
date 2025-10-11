@@ -320,6 +320,10 @@ pub fn Context::codegen_knf_expr(
       println("codegen for tuple get not implemented yet")
       panic()
     }
+    StructGet(_) => {
+      println("codegen for struct get not implemented yet")
+      panic()
+    }
     ArrayLiteral(_) => {
       println("codegen for array literal not implemented yet")
       panic()
