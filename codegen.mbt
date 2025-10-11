@@ -471,6 +471,28 @@ pub fn Context::codegen_knf_expr(
       println("codegen for tuple literal not implemented yet")
       panic()
     }
+    Cast(from=from, to=to, name) => self.codegen_for_cast_expr(
+      from, to, name, name_value_map, name_type_map,
+    )
+    BitCast(from=_, to=to, name) => {
+      guard name_value_map.get(name) is Some(from_val) else {
+        println("Compiler ICE: variable not found in name_value_map")
+        panic()
+      }
+      let data_layout = self.llvm_mod.getDataLayout()
+      let from_ty_bit_size = data_layout.getTypeAllocSizeInBits(from_val.getType())
+      let to_ty = codegen_for_type(to, self.llvm_ctx)
+      let to_ty_bit_size = data_layout.getTypeAllocSizeInBits(to_ty)
+      guard from_ty_bit_size == to_ty_bit_size else {
+        println("Compiler ICE: BitCast types must have the same size")
+        panic()
+      }
+      guard to_ty.tryAsPrimitiveType() is Some(to_ty) else {
+        println("Compiler ICE: BitCast to type must be a primitive type")
+        panic()
+      }
+      self.builder.createBitCast(from_val, to_ty)
+    }
   }
 }
 
@@ -790,6 +812,49 @@ pub fn Context::codegen_knf_binary_expr(
           panic()
         }
       }
+  }
+}
+
+fn Context::codegen_for_cast_expr(
+  self : Self,
+  from : TypeKind,
+  to : TypeKind,
+  name : Name,
+  name_value_map : Map[Name, &@IR.Value],
+  name_type_map : Map[Name, TypeKind],
+) -> &@IR.Value raise {
+  guard name_value_map.get(name) is Some(val) else {
+    println("Compiler ICE: variable not found in name_value_map")
+    panic()
+  }
+  let ty = name_type_map.get(name).unwrap()
+
+  // Load value if it's a pointer (mutable variable)
+  let val = match val.getType().asTypeEnum() {
+    PointerType(_) => {
+      let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+      self.builder.createLoad(llvm_ty, val)
+    }
+    _ => val
+  }
+
+  match (from, to) {
+    (Int, Float) => self.builder.createSIToFP(val, self.llvm_ctx.getFloatTy())
+    (Int, Double) => self.builder.createSIToFP(val, self.llvm_ctx.getDoubleTy())
+    (UInt, Float) => self.builder.createUIToFP(val, self.llvm_ctx.getFloatTy())
+    (UInt, Double) => self.builder.createUIToFP(val, self.llvm_ctx.getDoubleTy())
+    (Float, Int) => self.builder.createFPToSI(val, self.llvm_ctx.getInt32Ty())
+    (Double, Int) => self.builder.createFPToSI(val, self.llvm_ctx.getInt32Ty())
+    (Float, UInt) => self.builder.createFPToUI(val, self.llvm_ctx.getInt32Ty())
+    (Double, UInt) => self.builder.createFPToUI(val, self.llvm_ctx.getInt32Ty())
+    (Int, Int64) => self.builder.createSExt(val, self.llvm_ctx.getInt64Ty())
+    (UInt, UInt64) => self.builder.createZExt(val, self.llvm_ctx.getInt64Ty())
+    (Int64, Int) => self.builder.createTrunc(val, self.llvm_ctx.getInt32Ty())
+    (UInt64, UInt) => self.builder.createTrunc(val, self.llvm_ctx.getInt32Ty())
+    _ => {
+      println("Compiler ICE: unsupported cast from \{from} to \{to}")
+      panic()
+    }
   }
 }
 

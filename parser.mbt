@@ -136,7 +136,7 @@ pub(all) enum TypeKind {
   Array(TypeKind)
   Function(Array[TypeKind], TypeKind)
   Defined(String, Array[TypeKind]) // Array[Int], Map[String, Int]
-} derive(Eq)
+} derive(Hash, Eq)
 
 ///|
 pub impl Show for TypeKind with output(self, logger) {

@@ -991,6 +991,8 @@ pub(all) enum KnfExpr {
   If(KnfExpr, KnfBlock, KnfBlock)
   Not(Name)
   Neg(Name)
+  Cast(from~: TypeKind, to~:TypeKind, Name)
+  BitCast(from~: TypeKind, to~:TypeKind, Name)
   Call(Name, Array[Name])
   ArrayGet(Name, Name)
   TupleGet(Name, Int)
@@ -1167,8 +1169,7 @@ pub fn Context::field_access_to_knf(
     panic()
   }
   guard ty is Defined(struct_name, _) else {
-    println("Compiler ICE: Expression must be a struct type.")
-    panic()
+    return self.builtin_type_field_access_to_knf(struct_knf, ty, field_name)
   }
   guard self.struct_defs.get(struct_name) is Some(struct_def) else {
     println("Compiler ICE: Struct definition not found.")
@@ -1190,6 +1191,15 @@ pub fn Context::field_access_to_knf(
   }
   let acc_expr = KnfExpr::StructGet(acc_name, field_name)
   (stmts, acc_expr)
+}
+
+pub fn Context::builtin_type_field_access_to_knf(
+  self : Self,
+  expr_knf : KnfExpr,
+  ty : TypeKind,
+  field_name : String,
+) -> (Array[KnfStmt], KnfExpr) {
+  ...
 }
 
 ///|
@@ -1253,6 +1263,13 @@ pub fn Context::call_expr_to_knf(
   func_expr : ApplyExpr,
   arg_exprs : Array[Expr],
 ) -> (Array[KnfStmt], KnfExpr) {
+  // Need to check if func_expr is satisfied like `a.func`
+  match func_expr.kind {
+    FieldAccess(obj_expr, field_name) => {
+      return self.method_call_expr_to_knf(obj_expr, field_name, arg_exprs)
+    }
+    _ => ()
+  }
   let (func_stmts, func_knf) = self.apply_expr_to_knf(func_expr)
   let (arg_stmts, arg_names) = self.multiple_exprs_to_knf(arg_exprs)
   let stmts = Array::new()
@@ -1273,6 +1290,87 @@ pub fn Context::call_expr_to_knf(
   }
   let result_expr = KnfExpr::Call(func_name, arg_names)
   (stmts, result_expr)
+}
+
+pub fn Context::method_call_expr_to_knf(
+  self : Self,
+  obj_expr : ApplyExpr,
+  method_name : String,
+  arg_exprs : Array[Expr],
+) -> (Array[KnfStmt], KnfExpr) {
+  let (master_stmts, master_knf) = self.apply_expr_to_knf(obj_expr)
+  let (arg_stmts, arg_names) = self.multiple_exprs_to_knf(arg_exprs)
+  ignore(arg_names) // currently unused, will be used in future
+  let stmts = Array::new()
+  stmts..append(master_stmts)..append(arg_stmts)
+  let master_name = match master_knf {
+    Ident(name) => name
+    _ => {
+      guard obj_expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = self.new_name("tmp")
+      stmts.push(KnfStmt::Let(name, ty, master_knf))
+      name
+    }
+  }
+  guard obj_expr.ty is Some(ty) else {
+    println(
+      "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+    )
+    panic()
+  }
+  match (ty, method_name) {
+    (Int, "to_int64") => (stmts, Cast(from=Int, to=Int64, master_name))
+    (Int, "to_uint") => (stmts, BitCast(from=Int, to=UInt, master_name))
+    (Int, "to_uint64") => (stmts, Cast(from=Int, to=UInt64, master_name))
+    (Int, "to_float") => (stmts, Cast(from=Int, to=Float, master_name))
+    (Int, "to_double") => (stmts, Cast(from=Int, to=Double, master_name))
+    (Int, "reinterpret_as_float") => (stmts, BitCast(from=Int, to=Float, master_name))
+    (Int, "reinterpret_as_double") => (stmts, BitCast(from=Int, to=Double, master_name))
+    (Int64, "to_int") => (stmts, Cast(from=Int64, to=Int, master_name))
+    (Int64, "to_uint") => (stmts, Cast(from=Int64, to=UInt, master_name))
+    (Int64, "to_uint64") => (stmts, BitCast(from=Int64, to=UInt64, master_name))
+    (Int64, "to_float") => (stmts, Cast(from=Int64, to=Float, master_name))
+    (Int64, "to_double") => (stmts, Cast(from=Int64, to=Double, master_name))
+    (Int64, "reinterpret_as_float") => (stmts, BitCast(from=Int64, to=Float, master_name))
+    (Int64, "reinterpret_as_double") => (stmts, BitCast(from=Int64, to=Double, master_name))
+    (UInt, "to_int") => (stmts, BitCast(from=UInt, to=Int, master_name))
+    (UInt, "to_int64") => (stmts, Cast(from=UInt, to=Int64, master_name))
+    (UInt, "to_uint64") => (stmts, Cast(from=UInt, to=UInt64, master_name))
+    (UInt, "to_float") => (stmts, Cast(from=UInt, to=Float, master_name))
+    (UInt, "to_double") => (stmts, Cast(from=UInt, to=Double, master_name))
+    (UInt, "reinterpret_as_float") => (stmts, BitCast(from=UInt, to=Float, master_name))
+    (UInt, "reinterpret_as_double") => (stmts, BitCast(from=UInt, to=Double, master_name))
+    (UInt64, "to_int") => (stmts, Cast(from=UInt64, to=Int, master_name))
+    (UInt64, "to_int64") => (stmts, BitCast(from=UInt64, to=Int64, master_name))
+    (UInt64, "to_uint") => (stmts, Cast(from=UInt64, to=UInt, master_name))
+    (UInt64, "to_float") => (stmts, Cast(from=UInt64, to=Float, master_name))
+    (UInt64, "to_double") => (stmts, Cast(from=UInt64, to=Double, master_name))
+    (UInt64, "reinterpret_as_float") => (stmts, BitCast(from=UInt64, to=Float, master_name))
+    (UInt64, "reinterpret_as_double") => (stmts, BitCast(from=UInt64, to=Double, master_name))
+    (Float, "to_int") => (stmts, Cast(from=Float, to=Int, master_name))
+    (Float, "to_int64") => (stmts, Cast(from=Float, to=Int64, master_name))
+    (Float, "to_uint") => (stmts, Cast(from=Float, to=UInt, master_name))
+    (Float, "to_uint64") => (stmts, Cast(from=Float, to=UInt64, master_name))
+    (Float, "to_double") => (stmts, Cast(from=Float, to=Double, master_name))
+    (Float, "reinterpret_as_int") => (stmts, BitCast(from=Float, to=Int, master_name))
+    (Float, "reinterpret_as_int64") => (stmts, BitCast(from=Float, to=Int64, master_name))
+    (Double, "to_int") => (stmts, Cast(from=Double, to=Int, master_name))
+    (Double, "to_int64") => (stmts, Cast(from=Double, to=Int64, master_name))
+    (Double, "to_uint") => (stmts, Cast(from=Double, to=UInt, master_name))
+    (Double, "to_uint64") => (stmts, Cast(from=Double, to=UInt64, master_name))
+    (Double, "to_float") => (stmts, Cast(from=Double, to=Float, master_name))
+    (Double, "reinterpret_as_int") => (stmts, BitCast(from=Double, to=Int, master_name))
+    (Double, "reinterpret_as_int64") => (stmts, BitCast(from=Double, to=Int64, master_name))
+    _ => {
+      println("Compiler ICE: Unimplemented method \{method_name} for type \{ty}.")
+      panic()
+    }
+  }
 }
 
 ///|
@@ -1477,6 +1575,8 @@ pub fn KnfExpr::stringify(self : KnfExpr, ident? : Int = 0) -> String {
       let args_str = args.map(arg => arg.to_string()).join(", ")
       "\{func_name}(\{args_str})"
     }
+    Cast(from=from, to=to, name) => "cast \{name} (\{from} -> \{to})"
+    BitCast(from=from, to=to, name) => "bitcast \{name} (\{from} -> \{to})"
     ArrayGet(array_name, index_name) => "\{array_name}[\{index_name}]"
     TupleGet(tuple_name, index) => "\{tuple_name}.\{index}"
     StructGet(struct_name, field_name) => "\{struct_name}.\{field_name}"

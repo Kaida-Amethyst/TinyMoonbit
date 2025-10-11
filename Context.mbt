@@ -11,6 +11,7 @@ pub struct Context {
   extern_functions : Map[String, ExternFunction]
   top_lets : Map[String, TopLet]
   struct_defs : Map[String, StructDef]
+  builtin_non_struct_fields: Map[TypeKind, Map[String, TypeKind]]
   // enum_defs : Array[EnumDef]
 
   // Type Check Phase
@@ -42,6 +43,7 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
   let llvm_ctx = @IR.Context::new()
   let llvm_mod = llvm_ctx.addModule(source_file)
   let builder = llvm_ctx.createBuilder()
+  let builtin_non_struct_fields = init_builtin_non_struct_fields()
   Context::{
     code,
     tokens: Array::new(),
@@ -50,6 +52,7 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     top_functions: Map::new(),
     extern_functions: Map::new(),
     struct_defs: Map::new(),
+    builtin_non_struct_fields,
     top_lets: Map::new(),
     type_env: Env::new(),
     current_func: None,
@@ -66,6 +69,84 @@ pub fn Context::new(code : String, source_file? : String = "demo") -> Context {
     builder,
     source_file,
   }
+}
+
+fn init_builtin_non_struct_fields() -> Map[TypeKind, Map[String, TypeKind]] {
+  let builtin_non_struct_fields :Map[TypeKind, Map[String, TypeKind]] = Map::new()
+
+  // Int: to_float, to_int64, to_uint64, to_uint, to_double
+  // reinterpret_as_float, reinterpret_as_uint
+  let int_fields: Map[String, TypeKind] = Map::new()
+  int_fields.set("to_float", Function([], Float))
+  int_fields.set("to_int64", Function([], Int64))
+  int_fields.set("to_uint64", Function([], UInt64))
+  int_fields.set("to_uint", Function([], UInt))
+  int_fields.set("to_double", Function([], Double))
+  int_fields.set("reinterpret_as_float", Function([], Float))
+  int_fields.set("reinterpret_as_uint", Function([], UInt))
+  builtin_non_struct_fields.set(Int, int_fields)
+
+  // Int64: to_float, to_int, to_uint64, to_uint, to_double
+  // reinterpret_as_double, reinterpret_as_uint64
+  let int64_fields: Map[String, TypeKind] = Map::new()
+  int64_fields.set("to_float", Function([], Float))
+  int64_fields.set("to_int", Function([], Int))
+  int64_fields.set("to_uint64", Function([], UInt64))
+  int64_fields.set("to_uint", Function([], UInt))
+  int64_fields.set("to_double", Function([], Double))
+  int64_fields.set("reinterpret_as_double", Function([], Double))
+  int64_fields.set("reinterpret_as_uint64", Function([], UInt64))
+  builtin_non_struct_fields.set(Int64, int64_fields)
+
+  // Float: to_int, to_int64, to_uint64, to_uint, to_double
+  // reinterpret_as_int, reinterpret_as_uint
+  let float_fields: Map[String, TypeKind] = Map::new()
+  float_fields.set("to_int", Function([], Int))
+  float_fields.set("to_int64", Function([], Int64))
+  float_fields.set("to_uint64", Function([], UInt64))
+  float_fields.set("to_uint", Function([], UInt))
+  float_fields.set("to_double", Function([], Double))
+  float_fields.set("reinterpret_as_int", Function([], Int))
+  float_fields.set("reinterpret_as_uint", Function([], UInt))
+  builtin_non_struct_fields.set(Float, float_fields)
+
+  // Double: to_int, to_int64, to_uint64, to_uint, to_float
+  // reinterpret_as_int64, reinterpret_as_uint64
+  let double_fields: Map[String, TypeKind] = Map::new()
+  double_fields.set("to_int", Function([], Int))
+  double_fields.set("to_int64", Function([], Int64))
+  double_fields.set("to_uint64", Function([], UInt64))
+  double_fields.set("to_uint", Function([], UInt))
+  double_fields.set("to_float", Function([], Float))
+  double_fields.set("reinterpret_as_int64", Function([], Int64))
+  double_fields.set("reinterpret_as_uint64", Function([], UInt64))
+  builtin_non_struct_fields.set(Double, double_fields)
+
+  // UInt: to_float, to_int64, to_uint64, to_int, to_double
+  // reinterpret_as_float, reinterpret_as_int
+  let uint_fields: Map[String, TypeKind] = Map::new()
+  uint_fields.set("to_float", Function([], Float))
+  uint_fields.set("to_int64", Function([], Int64))
+  uint_fields.set("to_uint64", Function([], UInt64))
+  uint_fields.set("to_int", Function([], Int))
+  uint_fields.set("to_double", Function([], Double))
+  uint_fields.set("reinterpret_as_float", Function([], Float))
+  uint_fields.set("reinterpret_as_int", Function([], Int))
+  builtin_non_struct_fields.set(UInt, uint_fields)
+
+  // UInt64: to_float, to_int64, to_uint, to_int, to_double
+  // reinterpret_as_double, reinterpret_as_int64
+  let uint64_fields: Map[String, TypeKind] = Map::new()
+  uint64_fields.set("to_float", Function([], Float))
+  uint64_fields.set("to_int64", Function([], Int64))
+  uint64_fields.set("to_uint", Function([], UInt))
+  uint64_fields.set("to_int", Function([], Int))
+  uint64_fields.set("to_double", Function([], Double))
+  uint64_fields.set("reinterpret_as_double", Function([], Double))
+  uint64_fields.set("reinterpret_as_int64", Function([], Int64))
+  builtin_non_struct_fields.set(UInt64, uint64_fields)
+
+  builtin_non_struct_fields
 }
 
 ///|

@@ -337,20 +337,17 @@ pub fn Context::type_check_field_access_expr(
 ) -> TypeKind raise TypeCheckError {
   let { struct_defs, .. } = self
   let obj_ty = self.type_check_apply_expr(obj)
-  let obj_name = match obj_ty {
-    TypeKind::Defined(name, _) => name
-    _ =>
-      raise TypeCheckError("type mismatch: expected struct type, got \{obj_ty}")
+  if obj_ty is Defined(obj_name, _) {
+    guard struct_defs.get(obj_name) is Some(struct_obj) else {
+      raise TypeCheckError("undefined struct type: \{obj_name}")
+    }
+    guard struct_obj.get_field(field) is Some(field) else {
+      raise TypeCheckError("undefined field \{field} in struct \{obj_name}")
+    }
+    return field.ty.kind
+  } else {
+    return self.non_defined_type_field_access(obj_ty, field)
   }
-  guard struct_defs.get(obj_name) is Some(struct_obj) else {
-    raise TypeCheckError("undefined struct type: \{obj_name}")
-  }
-
-  //let field = struct_obj.get_field(field)
-  guard struct_obj.get_field(field) is Some(field) else {
-    raise TypeCheckError("undefined field \{field} in struct \{obj_name}")
-  }
-  field.ty.kind
 }
 
 ///|
@@ -513,12 +510,10 @@ pub fn Context::type_check_left_value(
     FieldAccess(obj, field) => {
       let { struct_defs, .. } = self
       let obj_ty = self.type_check_left_value(obj)
-      let obj_name = match obj_ty {
-        TypeKind::Defined(name, _) => name
-        _ =>
-          raise TypeCheckError(
-            "type mismatch in left value: expected struct type, got \{obj_ty}",
-          )
+      guard obj_ty is Defined(obj_name, _) else {
+        raise TypeCheckError(
+          "type mismatch in left value: expected struct type, got \{obj_ty}",
+        )
       }
       guard struct_defs.get(obj_name) is Some(struct_obj) else {
         raise TypeCheckError("undefined struct type: \{obj_name}")
@@ -536,6 +531,17 @@ pub fn Context::type_check_left_value(
   }
   lv.ty = Some(ty)
   ty
+}
+
+pub fn Context::non_defined_type_field_access(self: Self, ty: TypeKind, field: String) -> TypeKind raise TypeCheckError {
+  let { builtin_non_struct_fields, .. } = self
+  guard builtin_non_struct_fields.get(ty) is Some(fields) else {
+    raise TypeCheckError("type \{ty} has no field \{field}")
+  }
+  guard fields.get(field) is Some(field_ty) else {
+    raise TypeCheckError("type \{ty} has no field \{field}")
+  }
+  field_ty
 }
 
 ///|

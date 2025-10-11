@@ -9,4 +9,8 @@ void print_double(double value) {
   printf("%lf\n", value);
 }
 
+void print_float(float value) {
+  printf("%f\n", value);
+}
+
 // sin, cos, sqrt: no need special runtime functions, just use math.h
