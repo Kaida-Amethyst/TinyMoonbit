@@ -306,9 +306,8 @@ pub fn Context::type_check_atom_expr(
       }
       TypeKind::Array(first_ty)
     }
-    StructConstruct(name, fields) => {
+    StructConstruct(name, fields) =>
       self.type_check_struct_construct_expr(name, fields)
-    }
   }
   atom.ty = Some(ty)
   ty
@@ -341,9 +340,8 @@ pub fn Context::type_check_field_access_expr(
   let obj_ty = self.type_check_apply_expr(obj)
   let obj_name = match obj_ty {
     TypeKind::Defined(name, _) => name
-    _ => {
+    _ =>
       raise TypeCheckError("type mismatch: expected struct type, got \{obj_ty}")
-    }
   }
   guard struct_defs.get(obj_name) is Some(struct_obj) else {
     raise TypeCheckError("undefined struct type: \{obj_name}")
@@ -351,9 +349,7 @@ pub fn Context::type_check_field_access_expr(
 
   //let field = struct_obj.get_field(field)
   guard struct_obj.get_field(field) is Some(field) else {
-    raise TypeCheckError(
-      "undefined field \{field} in struct \{obj_name}",
-    )
+    raise TypeCheckError("undefined field \{field} in struct \{obj_name}")
   }
   field.ty.kind
 }
@@ -377,9 +373,7 @@ pub fn Context::type_check_struct_construct_expr(
   for field in fields {
     let (field_name, expr) = field
     guard struct_obj.get_field(field_name) is Some(field_def) else {
-      raise TypeCheckError(
-        "undefined field \{field_name} in struct \{name}",
-      )
+      raise TypeCheckError("undefined field \{field_name} in struct \{name}")
     }
     let expr_ty = self.type_check_expr(expr)
     guard expr_ty == field_def.ty.kind else {
@@ -522,19 +516,16 @@ pub fn Context::type_check_left_value(
       let obj_ty = self.type_check_left_value(obj)
       let obj_name = match obj_ty {
         TypeKind::Defined(name, _) => name
-        _ => {
+        _ =>
           raise TypeCheckError(
             "type mismatch in left value: expected struct type, got \{obj_ty}",
           )
-        }
       }
       guard struct_defs.get(obj_name) is Some(struct_obj) else {
         raise TypeCheckError("undefined struct type: \{obj_name}")
       }
       guard struct_obj.get_field(field) is Some(field) else {
-        raise TypeCheckError(
-          "undefined field \{field} in struct \{obj_name}",
-        )
+        raise TypeCheckError("undefined field \{field} in struct \{obj_name}")
       }
       guard field.is_mut else {
         raise TypeCheckError(

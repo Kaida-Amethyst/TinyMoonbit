@@ -234,6 +234,7 @@ fn Context::type_check_let_mut_stmt(Self, LetMutStmt) -> Unit raise TypeCheckErr
 fn Context::type_check_let_stmt(Self, LetStmt) -> Unit raise TypeCheckError
 fn Context::type_check_return_stmt(Self, Expr) -> TypeKind raise TypeCheckError
 fn Context::type_check_stmt(Self, Stmt) -> TypeKind raise TypeCheckError
+fn Context::type_check_struct_construct_expr(Self, String, Array[(String, Expr)]) -> TypeKind raise TypeCheckError
 fn Context::type_check_tuple_access_expr(Self, ApplyExpr, Int) -> TypeKind raise TypeCheckError
 fn Context::type_check_while_stmt(Self, WhileStmt) -> Unit raise TypeCheckError
 fn Context::typecheck(Self) -> Unit raise TypeCheckError
@@ -518,6 +519,7 @@ pub struct StructDef {
   generic_params : Array[String]
   fields : Array[StructField]
 }
+fn StructDef::get_field(Self, String) -> StructField?
 impl Eq for StructDef
 impl Show for StructDef
 
@@ -527,6 +529,7 @@ pub struct StructField {
   end_lineno : Int
   end_column : Int
   name : String
+  is_mut : Bool
   ty : Type
 }
 impl Eq for StructField

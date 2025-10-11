@@ -2052,7 +2052,7 @@ pub struct StructDef {
 } derive(Show, Eq)
 
 ///|
-pub fn StructDef::get_field(self: Self, name: String) -> StructField? {
+pub fn StructDef::get_field(self : Self, name : String) -> StructField? {
   self.fields.iter().find_first(f => f.name == name)
 }
 
@@ -2149,7 +2149,7 @@ pub struct StructField {
   end_lineno : Int
   end_column : Int
   name : String
-  is_mut: Bool
+  is_mut : Bool
   ty : Type
 } derive(Show, Eq)
 
