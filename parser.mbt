@@ -1435,7 +1435,9 @@ pub fn Context::parse_stmt(
       (stmt, rest)
     }
     [{ kind: Keyword(Return), lineno, column }, .. tokens] => {
-      let (expr, rest) = if tokens is [{ kind: SemiColon, .. }, ..] {
+      let (expr, rest) = if tokens is [{ kind: SemiColon | Bracket('}'), .. }, ..] {
+        (None, tokens)
+      } else if tokens is [tok, ..] && tok.lineno > lineno {
         (None, tokens)
       } else {
         let (expr, rest) = self.parse_expr(tokens)
