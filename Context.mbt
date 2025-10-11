@@ -22,7 +22,7 @@ pub struct Context {
   knf_top_lets : Map[String, KnfTopLet]
   knf_ext_funcs : Map[String, KnfExternFunc]
   knf_top_funcs : Map[String, KnfFunction]
-  knf_struct_defs: Map[String, KnfStructDef]
+  knf_struct_defs : Map[String, KnfStructDef]
   // knf_enum_defs: Map[String, KnfEnumDef]
 
   // codegen phase

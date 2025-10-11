@@ -143,6 +143,7 @@ pub struct Context {
   knf_top_lets : Map[String, KnfTopLet]
   knf_ext_funcs : Map[String, KnfExternFunc]
   knf_top_funcs : Map[String, KnfFunction]
+  knf_struct_defs : Map[String, KnfStructDef]
   llvm_ctx : @IR.Context
   llvm_mod : @IR.Module
   builder : @IR.IRBuilder
@@ -151,6 +152,7 @@ pub struct Context {
   source_file : String
 }
 fn Context::apply_expr_to_knf(Self, ApplyExpr) -> (Array[KnfStmt], KnfExpr)
+fn Context::array_access_left_value_to_knf(Self, LeftValue, Expr) -> (Array[KnfStmt], Name)
 fn Context::array_access_to_knf(Self, ApplyExpr, Expr) -> (Array[KnfStmt], KnfExpr)
 fn Context::assign_stmt_to_knf(Self, AssignStmt) -> Array[KnfStmt]
 fn Context::atom_expr_to_knf(Self, AtomExpr) -> (Array[KnfStmt], KnfExpr)
@@ -170,6 +172,7 @@ fn Context::codegen_knf_func_for_func_value(Self, KnfFunction) -> Unit raise
 fn Context::codegen_knf_if_expr(Self, KnfExpr, KnfBlock, KnfBlock, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> &@IR.Value raise
 fn Context::codegen_knf_stmt(Self, KnfStmt, Map[Name, &@IR.Value], Map[Name, TypeKind]) -> Unit raise
 fn Context::expr_to_knf(Self, Expr) -> (Array[KnfStmt], KnfExpr)
+fn Context::field_access_left_value_to_knf(Self, LeftValue, String) -> (Array[KnfStmt], Name)
 fn Context::field_access_to_knf(Self, ApplyExpr, String) -> (Array[KnfStmt], KnfExpr)
 fn Context::for_stmt_to_knf(Self, ForStmt) -> Array[KnfStmt]
 fn Context::get_error_msg(Self, Token, String) -> String
@@ -218,6 +221,7 @@ fn Context::tokenize(Self) -> Unit raise TokenizeError
 fn Context::top_extern_func_to_knf(Self, ExternFunction) -> KnfExternFunc
 fn Context::top_function_to_knf(Self, TopFunction) -> KnfFunction
 fn Context::top_let_to_knf(Self, TopLet) -> KnfTopLet
+fn Context::top_struct_def_to_knf(Self, StructDef) -> KnfStructDef
 fn Context::tuple_access_to_knf(Self, ApplyExpr, Int) -> (Array[KnfStmt], KnfExpr)
 fn Context::type_check_apply_expr(Self, ApplyExpr) -> TypeKind raise TypeCheckError
 fn Context::type_check_array_access_expr(Self, ApplyExpr, Expr) -> TypeKind raise TypeCheckError
@@ -355,6 +359,7 @@ pub(all) enum KnfExpr {
   ArrayGet(Name, Name)
   TupleGet(Name, Int)
   CreateStruct(String)
+  StructGet(Name, String)
   ArrayLiteral(Array[Name])
   TupleLiteral(Array[Name])
 }
@@ -395,8 +400,9 @@ impl Show for KnfStmt
 
 pub(all) struct KnfStructDef {
   name : String
-  fields : Array[(String, TypeKind)]
+  fields : Array[(String, Bool, TypeKind)]
 }
+fn KnfStructDef::stringify(Self) -> String
 
 pub(all) struct KnfTopLet {
   name : Name

@@ -137,6 +137,7 @@ pub(all) struct KnfStructDef {
   fields : Array[(String, Bool, TypeKind)]
 }
 
+///|
 pub fn Context::top_struct_def_to_knf(
   self : Self,
   struct_def : StructDef,
@@ -150,6 +151,7 @@ pub fn Context::top_struct_def_to_knf(
   knf_struct
 }
 
+///|
 pub fn KnfStructDef::stringify(self : KnfStructDef) -> String {
   let sb = StringBuilder::new()
   sb.write_string("struct \{self.name} {\n")
@@ -707,19 +709,18 @@ pub fn Context::left_value_to_knf(
       let name = self.get_knf_name(id)
       (Array::new(), name)
     }
-    ArrayAccess(arr_left_value, index_expr) => {
+    ArrayAccess(arr_left_value, index_expr) =>
       self.array_access_left_value_to_knf(arr_left_value, index_expr)
-    }
-    FieldAccess(inner_left, field_name) => {
+    FieldAccess(inner_left, field_name) =>
       self.field_access_left_value_to_knf(inner_left, field_name)
-    }
   }
 }
 
+///|
 pub fn Context::array_access_left_value_to_knf(
-  self: Self,
-  arr_left_value: LeftValue,
-  index_expr: Expr
+  self : Self,
+  arr_left_value : LeftValue,
+  index_expr : Expr,
 ) -> (Array[KnfStmt], Name) {
   let (arr_stmts, arr_knf_name) = self.left_value_to_knf(arr_left_value)
   let (index_stmts, index_knf) = self.expr_to_knf(index_expr)
@@ -762,9 +763,9 @@ pub fn Context::array_access_left_value_to_knf(
 
 ///|
 pub fn Context::field_access_left_value_to_knf(
-  self: Self,
-  obj_left_value: LeftValue,
-  field_name: String
+  self : Self,
+  obj_left_value : LeftValue,
+  field_name : String,
 ) -> (Array[KnfStmt], Name) {
   let (obj_stmts, obj_knf_name) = self.left_value_to_knf(obj_left_value)
   let stmts = Array::new()
@@ -785,11 +786,15 @@ pub fn Context::field_access_left_value_to_knf(
     panic()
   }
   guard struct_def.fields.iter().any(f => f.name == field_name) else {
-    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+    println(
+      "Compiler ICE: Field \{field_name} not found in struct \{struct_name}.",
+    )
     panic()
   }
   guard struct_def.get_field(field_name) is Some(field) else {
-    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+    println(
+      "Compiler ICE: Field \{field_name} not found in struct \{struct_name}.",
+    )
     panic()
   }
   let field_ty = field.ty.kind
@@ -1155,8 +1160,10 @@ pub fn Context::field_access_to_knf(
     println("Compiler ICE: Struct definition not found.")
     panic()
   }
-  guard struct_def.get_field(field_name) is Some({ty, ..}) else {
-    println("Compiler ICE: Field \{field_name} not found in struct \{struct_name}.")
+  guard struct_def.get_field(field_name) is Some({ ty, .. }) else {
+    println(
+      "Compiler ICE: Field \{field_name} not found in struct \{struct_name}.",
+    )
     panic()
   }
   let acc_name = match struct_knf {
