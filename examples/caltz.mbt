@@ -1,4 +1,6 @@
 
+extern fn print_int(x: Int) -> Unit = "print_int";
+
 fn callatz(input : Int) -> Int {
   let mut cnt = 0;
   let mut n = input;

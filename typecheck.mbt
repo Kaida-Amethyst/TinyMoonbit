@@ -203,6 +203,22 @@ pub fn Context::type_check_expr(
   let ty = match expr.kind {
     ApplyExpr(apply_expr) => self.type_check_apply_expr(apply_expr)
     BlockExpr(block_expr) => self.type_check_block(block_expr)
+    NotExpr(inner) => {
+      let inner_ty = self.type_check_expr(inner)
+      guard inner_ty is Bool else {
+        raise TypeCheckError("type mismatch in not expression: expected Bool, got \{inner_ty}")
+      }
+      Bool
+    }
+    NegExpr(inner) => {
+      let inner_ty = self.type_check_expr(inner)
+      match inner_ty {
+        Int | Int64 | UInt | UInt64 | Float | Double => inner_ty
+        _ => raise TypeCheckError(
+          "type mismatch in neg expression: expected numeric type, got \{inner_ty}",
+        )
+      }
+    }
     BinaryExpr(op, lhs, rhs) => {
       let lhs_ty = self.type_check_expr(lhs)
       let rhs_ty = self.type_check_expr(rhs)

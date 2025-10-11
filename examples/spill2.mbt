@@ -9,7 +9,7 @@ fn g(y: Int) -> Int {
 }
 
 fn main {
-  let z = Array::make(10, 1);
+  let z = [1, 1, 1, 1, 1, 1, 1]
   let x = f();
   let y = 67890;
   let z0 = z[0];

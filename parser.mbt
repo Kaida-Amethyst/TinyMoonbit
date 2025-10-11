@@ -682,6 +682,8 @@ pub struct Expr {
 pub enum ExprKind {
   ApplyExpr(ApplyExpr)
   BlockExpr(BlockExpr)
+  NotExpr(Expr)
+  NegExpr(Expr)
   BinaryExpr(BinaryOp, Expr, Expr)
   IfExpr(IfExpr)
   //MatchExpr(MatchExpr)
@@ -720,6 +722,30 @@ pub fn Context::parse_expr(
         kind: ExprKind::BlockExpr(block),
       }
       return (expr, rest)
+    }
+    Not => {
+      let (expr, rest) = self.parse_expr(tokens[1:])
+      let not_expr = Expr::{
+        lineno: tok.lineno,
+        column: tok.column,
+        end_lineno: expr.end_lineno,
+        end_column: expr.end_column,
+        ty: None,
+        kind: ExprKind::NotExpr(expr),
+      }
+      return (not_expr, rest)
+    }
+    BinaryOp(Sub) => {
+      let (expr, rest) = self.parse_expr(tokens[1:])
+      let neg_expr = Expr::{
+        lineno: tok.lineno,
+        column: tok.column,
+        end_lineno: expr.end_lineno,
+        end_column: expr.end_column,
+        ty: None,
+        kind: ExprKind::NegExpr(expr),
+      }
+      return (neg_expr, rest)
     }
     _ => ()
   }

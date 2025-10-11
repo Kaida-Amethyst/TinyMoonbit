@@ -910,6 +910,46 @@ pub fn Context::expr_to_knf(
     }
     BinaryExpr(op, lhs, rhs) => self.binary_expr_to_knf(op, lhs, rhs)
     IfExpr(if_expr) => self.if_expr_to_knf(if_expr)
+    NotExpr(expr) => {
+      let (stmts, knf_expr) = self.expr_to_knf(expr)
+      guard expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = match knf_expr {
+        Ident(name) => name
+        _ => {
+          let name = self.new_name("tmp")
+          let s = KnfStmt::Let(name, ty, knf_expr)
+          stmts.push(s)
+          name
+        }
+      }
+      let result_expr = KnfExpr::Not(name)
+      (stmts, result_expr)
+    }
+    NegExpr(expr) => {
+      let (stmts, knf_expr) = self.expr_to_knf(expr)
+      guard expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: Expression must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = match knf_expr {
+        Ident(name) => name
+        _ => {
+          let name = self.new_name("tmp")
+          let s = KnfStmt::Let(name, ty, knf_expr)
+          stmts.push(s)
+          name
+        }
+      }
+      let result_expr = KnfExpr::Neg(name)
+      (stmts, result_expr)
+    }
   }
 }
 

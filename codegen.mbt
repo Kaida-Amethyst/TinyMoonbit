@@ -218,13 +218,47 @@ pub fn Context::codegen_knf_expr(
       self.codegen_knf_binary_expr(
         op, left_name, right_name, name_value_map, name_type_map,
       )
-    Not(_) => {
-      println("codegen for not expression not implemented yet")
-      panic()
+    Not(val_name) => {
+      let val = name_value_map.get(val_name).unwrap()
+      let ty = name_type_map.get(val_name).unwrap()
+      let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+      let val = match val.getType().asTypeEnum() {
+        PointerType(_) => self.builder.createLoad(llvm_ty, val)
+        _ => val
+      }
+      // use xor
+      let one = self.llvm_ctx.getConstTrue()
+      self.builder.createXor(val, one)
     }
-    Neg(_) => {
-      println("codegen for neg expression not implemented yet")
-      panic()
+    Neg(val_name) => {
+      let val = name_value_map.get(val_name).unwrap()
+      let ty = name_type_map.get(val_name).unwrap()
+      let llvm_ty = codegen_for_type(ty, self.llvm_ctx)
+      let val = match val.getType().asTypeEnum() {
+        PointerType(_) => self.builder.createLoad(llvm_ty, val)
+        _ => val
+      }
+      match ty {
+        Int | Int64 | UInt | UInt64 => {
+          let zero = self.llvm_ctx.getConstInt32(0)
+          self.builder.createSub(zero, val)
+        }
+        Float | Double => {
+          // TODO: use createFNeg when it available
+          let zero = match ty {
+            Float => self.llvm_ctx.getConstFloat(0.0)
+            _ => self.llvm_ctx.getConstDouble(0.0)
+          }
+          self.builder.createFSub(zero, val)
+        }
+        //Float | Double => self.builder.createFNeg(val)
+        _ => {
+          println("Compiler ICE: unsupported type for negation")
+          panic()
+        }
+      }
+      //println("codegen for neg expression not implemented yet")
+      //panic()
     }
     If(cond_expr, then_block, else_block) => {
       // Evaluate the condition
