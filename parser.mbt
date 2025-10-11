@@ -560,9 +560,17 @@ pub fn Context::parse_extern_function(
   guard tokens is [{ kind: String(ffi_name), lineno, column }, .. tokens] else {
     raise ParseError((tokens[0], "Parse Error, expect a string literal"))
   }
-  guard tokens
-    is [{ kind: SemiColon, lineno: end_lineno, column: end_column }, .. tokens] else {
-    raise ParseError((tokens[0], "Parse Error, expect ';'"))
+  guard tokens is [next_tok, ..] else {
+    println("Compiler ICE: Empty Token ArrayView")
+    panic()
+  }
+  let (tokens, end_lineno, end_column) = if next_tok.kind is SemiColon {
+    (tokens[1:], next_tok.lineno, next_tok.column)
+  } else {
+    guard next_tok.lineno > lineno else {
+      raise ParseError((next_tok, "Expect ';' or new line after extern function"))
+    }
+    (tokens, lineno, column)
   }
   let extern_fn = ExternFunction::{
     lineno,

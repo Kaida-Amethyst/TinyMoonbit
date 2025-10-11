@@ -1,5 +1,5 @@
 
-extern fn print_int(n: Int) -> Unit = "print_int";
+extern fn print_int(n: Int) -> Unit = "print_int"
 
 fn fib(n: Int) -> Int {
   if n <= 1 {
