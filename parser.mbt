@@ -542,6 +542,12 @@ pub fn Context::parse_extern_function(
     println("Compiler ICE: extern function should start with extern")
     panic()
   }
+  // allow extern "C" fn .. or extern fn .. (because moonbit support it)
+  let tokens = if tokens is [{kind: String(_), ..}, ..tokens ] {
+    tokens
+  } else {
+    tokens
+  }
   guard tokens is [{ kind: Keyword(Fn), .. }, .. tokens] else {
     raise ParseError((tokens[0], "Parse Error, expect \"fn\"."))
   }
