@@ -95,6 +95,13 @@ pub fn Context::codegen_knf_func(
     self.codegen_knf_stmt(stmt, name_value_map, name_type_map)
   }
   match final_expr {
+    Unit if top_fn.name != "main" => {
+      let bb = builder.getInsertBlock()
+      if bb.getTerminator() is None {
+        let _ = builder.createRetVoid()
+
+      }
+    }
     Unit => ()
     e => {
       let ret_val = self.codegen_knf_expr(e, name_value_map, name_type_map)

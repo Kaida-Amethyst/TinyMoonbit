@@ -364,6 +364,26 @@ pub fn Context::stmt_to_knf(self : Self, stmt : Stmt) -> Array[KnfStmt] {
       [..stmts, KnfStmt::Return(expr)]
     }
     ReturnStmt(None) => [KnfStmt::ReturnVoid]
+    ExprStmt({ kind: IfExpr(if_expr), ..}) => {
+      let (stmts, expr) = self.if_expr_to_knf(if_expr)
+      guard if_expr.ty is Some(ty) else {
+        println(
+          "Compiler ICE: If Expr must have been inferred type in Type Checking phase.",
+        )
+        panic()
+      }
+      let name = if ty is Unit {
+        Name::new_wild_card()
+      } else {
+        self.new_name("tmp")
+      }
+      let let_if = KnfStmt::Let(name, ty, expr)
+      if ty is Unit {
+        [..stmts, let_if]
+      } else {
+        [..stmts, let_if, KnfStmt::ExprStmt(Ident(name))]
+      }
+    }
     ExprStmt(expr) => {
       let (stmts, expr) = self.expr_to_knf(expr)
       [..stmts, KnfStmt::ExprStmt(expr)]
